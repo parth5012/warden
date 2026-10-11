@@ -1,5 +1,23 @@
 # LOG.md — Warden
 
+## 2026-10-11 — re-verification round: harness bug + missing regression tests
+
+**Status:** Done (22 passed, mypy clean, PR #1 merge=CLEAN at ba0c939)
+
+User asked "have you tested everything?" — audit found two gaps, both closed:
+
+1. **Real harness bug**: `/quit` at the `resume>` prompt was consumed as a decision value → demo graph routed to abort (silent deny). Root cause of confusing smoke-test output ("approved: False" where send was expected). Fix: exit commands at the resume prompt return False, thread stays parked. TDD: red test first.
+2. **Missing regression tests** for the 3 CodeRabbit fixes from the previous round: added tests/test_cli_chat.py (4 tests: /quit, empty re-prompt, failed-resume re-prompt, re-park loop) + 6-case _redact parametrize in test_checkpoint.py.
+
+Environment learnings (see LEARNINGS.md):
+- pgserver `cleanup_mode='stop'` stops the server at process exit (atexit); data dir persists — CLI restart re-attaches. Docstring corrected.
+- Passing `--pg` with a URI obtained from a throwaway `get_server` process races the atexit stop → use the CLI's own resolution.
+- `tests` is a package (empty `__init__.py` since 4fd3ff0); mypy needs `from tests import cli_chat`, no mypy_path.
+
+Verified: pytest 22 passed (12 checkpoint + 4 cli loop + 6 redact); mypy 0 errors;
+CLI e2e: single-process park→approve→sent; two-process park→/quit→restart→approve→sent, approved: True.
+Checks after push: CodeRabbit pass, GitGuardian pass, merge=CLEAN, not behind.
+
 ## 2026-10-11 — PR #1 filed + CodeRabbit review fixes
 
 **Status:** Done (checks green, PR OPEN — not merged)

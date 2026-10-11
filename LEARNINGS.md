@@ -16,3 +16,6 @@
 
 10. `uv init` expects `src/<pkg>/` layout when a build backend is set — package must live under `src/`.
 11. `rg` treats patterns starting with `-` as flags — use `rg -n -- '<pattern>'`.
+12. **pgserver stops PostgreSQL at process exit** (`cleanup_mode='stop'` default + `atexit`). The *data directory* persists, so a new process re-attaches to the same checkpoints — that's what makes the CLI crash-recovery demo work, not a long-lived server. Never hand a URI obtained from a throwaway `get_server` process to another CLI invocation: the server is already (or about to be) stopped. Let each CLI resolve pgserver itself.
+13. **Piped-input CLI tests: every line is consumed by whatever prompt is active.** `/quit` right after a parking input lands in the *resume* prompt, not the main loop, and was silently treated as a deny decision. Slash commands must be recognized at every prompt (or documented as decisions).
+14. **`tests/` is a package** (empty `__init__.py` since 4fd3ff0). Import helpers as `from tests import cli_chat`; adding `mypy_path = ["tests"]` makes mypy see the module twice (`tests.cli_chat` + `cli_chat`) and fail hard.
