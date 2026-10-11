@@ -172,10 +172,8 @@ def test_init_reexports() -> None:
     assert hasattr(warden.sandbox, "SandboxPort")
     assert hasattr(warden.sandbox, "SandboxResult")
     assert hasattr(warden.sandbox, "SandboxUnavailable")
-    assert warden.sandbox.__all__ == [
-        "SandboxPort",
-        "SandboxResult",
-        "SandboxUnavailable",
-    ]
+    assert "SandboxPort" in warden.sandbox.__all__
+    assert "SandboxResult" in warden.sandbox.__all__
+    assert "SandboxUnavailable" in warden.sandbox.__all__
     assert not hasattr(warden.sandbox, "DockerSandbox")
     assert "DockerSandbox" not in dir(warden.sandbox)

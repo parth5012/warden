@@ -10,9 +10,15 @@ from warden.sandbox.port import (
     SandboxResult,
     SandboxUnavailable,
 )
+from warden.sandbox.registry import (
+    ToolProfile,
+    get_profile,
+)
 
 __all__ = [
     "SandboxPort",
     "SandboxResult",
     "SandboxUnavailable",
+    "ToolProfile",
+    "get_profile",
 ]
