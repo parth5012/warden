@@ -70,7 +70,7 @@ warden/
     hitl/
       gate.py           # gate request/decision types
       runner.py         # THE re-entry helper
-    sandbox.py          # SandboxPort: subprocess adapter + in-process adapter
+      sandbox/           SandboxPort interface (port.py), registry (registry.py), Docker adapter (docker.py)
     llm.py              # LLM client adapter (usage -> journal)
     projections/        # telemetry.py, inbox.py, decision_graph.py — pure funcs
   app/
@@ -116,14 +116,14 @@ Approve flow: append `gate_decided` event → `graph.invoke(Command(resume=...),
 
 - Named-key header auth for approve/deny + policy writes (lock 8). Keys in env, principal recorded in journal.
 - Fail-closed everywhere (lock 4). DENY terminal (lock 5).
-- Sandbox: subprocess with timeout + scrubbed env for code/shell/file tools; API tools in-process (lock 7). Docker adapter only if judges ask.
+- Sandbox: Docker container containment with --network=none, read-only rootfs, tmpfs scratch, 30s/256MB/1 CPU caps, --rm, and single workspace bind mount (D:\tmp) for code/shell/file tools; API tools in-process (reopened lock 7). Registry declares tool profiles and limits; adapter raises SandboxUnavailable on daemon down/missing image/unknown profile (fail-closed, executor maps to Error(governance_unavailable)). GuardedExecutor classifier decides whether a call is sandboxed; the sandbox package decides how.
 - LLM egress: provider allowlist in config; `Error` if action targets an unlisted provider.
 
 ## 8. Testing strategy
 
 The interface is the test surface:
 - **Unit:** in-memory journal adapter, fake gate, in-process sandbox adapter, fake LLM client. `execute()` verdicts, idempotent write-ahead, policy matrix (allow/escalate/deny), re-entry helper loop.
-- **Integration (real Postgres):** journal replay after kill mid-park, pgvector retrieval, version append.
+- **Integration (real Postgres & Docker):** journal replay after kill mid-park, pgvector retrieval, version append; real Docker integration proofs with clean skip-gate when daemon is unavailable (tests/test_sandbox_integration.py proving network-none, read-only rootfs, timeout kill, and zero leftover containers).
 - **E2E (Playwright):** the four Phase-1 beats — approve a gate in the UI, watch denial, watch sandbox containment, read the dashboard.
 
 Two adapters per seam (journal, sandbox, gate, LLM client, policy store) = the seams are real, not decorative.
@@ -133,6 +133,6 @@ Two adapters per seam (journal, sandbox, gate, LLM client, policy store) = the s
 1. Start run: "email the weekly report, clean up old files, show me the orders table."
 2. Dashboard fills live: tokens, cost, latency per call.
 3. `DROP TABLE` attempt → **Denied**, red card: "policy: no destructive SQL. not approvable."
-4. Shell `rm -rf` → contained in sandbox, timeout logged.
+4. Shell `rm -rf` → contained in Docker sandbox with network isolation, timeout logged.
 5. Email send → **gated**: inbox shows request with full context → approve as `alice` → sends → timeline shows `requested → decided(approve, alice) → completed`.
 6. Kill the process mid-park, restart, resume the thread — write-ahead intent proves nothing was lost.

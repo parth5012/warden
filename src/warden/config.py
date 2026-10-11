@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,6 +65,31 @@ class Settings(BaseSettings):
         ),
         description="PostgreSQL connection string.",
     )
+    sandbox_workspace: Path = Field(
+        default_factory=lambda: (
+            Path("D:/tmp") if sys.platform == "win32" else Path("/tmp")
+        ),
+        validation_alias=AliasChoices(
+            "WARDEN_SANDBOX_WORKSPACE",
+            "SANDBOX_WORKSPACE",
+            "sandbox_workspace",
+        ),
+        description="Host directory mounted into container as workspace.",
+    )
+    sandbox_image: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "WARDEN_SANDBOX_IMAGE",
+            "SANDBOX_IMAGE",
+            "sandbox_image",
+        ),
+        description="Override container image (empty string uses registry default).",
+    )
+
+    @field_validator("sandbox_workspace")
+    @classmethod
+    def _resolve_sandbox_workspace(cls, v: Path) -> Path:
+        return v.resolve()
 
 
 settings = Settings()
