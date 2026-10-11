@@ -628,3 +628,60 @@ async def test_normal_non_zero_exit_returns_sandbox_result(
     assert result.timed_out is False
     assert result.stderr == "grep: pattern not found\n"
     assert result.profile == "docker:file_inspect:exec-netnone"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_cleans_up_container_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_path: Path,
+    sample_exec_profile: ToolProfile,
+) -> None:
+    """When action execution is cancelled, container cleanup runs and CancelledError propagates."""
+    killed_containers: list[str] = []
+    removed_containers: list[str] = []
+
+    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
+        cmd = args[0]
+        if cmd == "docker":
+            subcmd = args[1]
+            if subcmd == "run":
+                async def hanging_communicate() -> tuple[bytes, bytes]:
+                    await asyncio.sleep(10)
+                    return b"", b""
+
+                proc = MockProcess(returncode=0)
+                proc.communicate = hanging_communicate  # type: ignore[method-assign]
+                return proc
+            if subcmd == "kill":
+                killed_containers.append(args[2])
+                return MockProcess(returncode=0)
+            if subcmd == "rm":
+                removed_containers.append(args[3])
+                return MockProcess(returncode=0)
+        return MockProcess(returncode=0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    sandbox = DockerSandbox(
+        workspace_path=workspace_path,
+        registry_getter=lambda name: sample_exec_profile,
+    )
+
+    action = Action(
+        id="act-cancel",
+        kind=ActionKind.TOOL,
+        name="file_inspect",
+        payload={"argv": ["ls"]},
+        run_id="run-c",
+        thread_id="th-c",
+    )
+
+    task = asyncio.create_task(sandbox.run(action))
+    await asyncio.sleep(0.02)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert "warden-act-cancel" in killed_containers
+    assert "warden-act-cancel" in removed_containers

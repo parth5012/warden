@@ -37,6 +37,41 @@ DOCKER_UNAVAILABLE_PATTERNS = (
 )
 
 
+async def _cleanup_container(container_name: str, proc: asyncio.subprocess.Process) -> None:
+    """Best-effort kill and remove container, terminating the host docker process."""
+    try:
+        kill_proc = await asyncio.create_subprocess_exec(
+            "docker", "kill", container_name
+        )
+        try:
+            await asyncio.wait_for(kill_proc.wait(), timeout=5.0)
+        except (TimeoutError, asyncio.TimeoutError):
+            kill_proc.kill()
+    except Exception:
+        pass
+
+    try:
+        rm_proc = await asyncio.create_subprocess_exec(
+            "docker", "rm", "-f", container_name
+        )
+        try:
+            await asyncio.wait_for(rm_proc.wait(), timeout=5.0)
+        except (TimeoutError, asyncio.TimeoutError):
+            rm_proc.kill()
+    except Exception:
+        pass
+
+    try:
+        proc.kill()
+    except (ProcessLookupError, Exception):
+        pass
+
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=2.0)
+    except Exception:
+        pass
+
+
 def _sanitize_container_name(action_id: str) -> str:
     """Sanitize action ID for use in Docker container name."""
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "-", action_id)
@@ -171,39 +206,7 @@ class DockerSandbox:
                 timeout=float(profile.timeout_s),
             )
         except (TimeoutError, asyncio.TimeoutError):
-            # Best-effort kill and remove container
-            try:
-                kill_proc = await asyncio.create_subprocess_exec(
-                    "docker", "kill", container_name
-                )
-                try:
-                    await asyncio.wait_for(kill_proc.wait(), timeout=5.0)
-                except (TimeoutError, asyncio.TimeoutError):
-                    kill_proc.kill()
-            except Exception:
-                pass
-
-            try:
-                rm_proc = await asyncio.create_subprocess_exec(
-                    "docker", "rm", "-f", container_name
-                )
-                try:
-                    await asyncio.wait_for(rm_proc.wait(), timeout=5.0)
-                except (TimeoutError, asyncio.TimeoutError):
-                    rm_proc.kill()
-            except Exception:
-                pass
-
-            try:
-                proc.kill()
-            except (ProcessLookupError, Exception):
-                pass
-
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=2.0)
-            except Exception:
-                pass
-
+            await _cleanup_container(container_name, proc)
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return SandboxResult(
                 ok=False,
@@ -214,6 +217,9 @@ class DockerSandbox:
                 duration_ms=duration_ms,
                 profile=profile_tag,
             )
+        except asyncio.CancelledError:
+            await _cleanup_container(container_name, proc)
+            raise
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         stdout_text = _truncate_output(stdout_bytes)

@@ -70,7 +70,7 @@ warden/
     hitl/
       gate.py           # gate request/decision types
       runner.py         # THE re-entry helper
-      sandbox/           SandboxPort interface (port.py), registry (registry.py), Docker adapter (docker.py)
+    sandbox/           # SandboxPort interface (port.py), registry (registry.py), Docker adapter (docker.py)
     llm.py              # LLM client adapter (usage -> journal)
     projections/        # telemetry.py, inbox.py, decision_graph.py — pure funcs
   app/

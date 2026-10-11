@@ -89,7 +89,12 @@ class Settings(BaseSettings):
     @field_validator("sandbox_workspace")
     @classmethod
     def _resolve_sandbox_workspace(cls, v: Path) -> Path:
-        return v.resolve()
+        resolved = v.resolve()
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        return resolved
 
 
 settings = Settings()
