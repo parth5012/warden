@@ -234,13 +234,26 @@ CREATE UNIQUE INDEX journal_events_idempotency
 
 # llm_usage
 {
-    "action_id":        str,
-    "model":            str,
-    "prompt_tokens":    int,
-    "completion_tokens": int,
-    "total_tokens":     int,
-    "latency_ms":       int,
-    "estimated_cost_usd": float | None,
+    "action_id":              str,
+    "provider":               str,                 # e.g. "openai", "anthropic", "google"
+    "model":                  str,                 # model name or checkpoint
+    "prompt_tokens":          int,                 # provider reported or estimated prompt tokens
+    "completion_tokens":      int,                 # provider reported or estimated completion tokens
+    "total_tokens":           int,                 # mutually-exclusive total
+    "input_uncached_tokens":  int,                 # prompt_tokens - cached_tokens
+    "input_cached_tokens":    int,                 # cached prompt tokens
+    "output_standard_tokens": int,                 # completion_tokens - reasoning_tokens
+    "output_reasoning_tokens":int,                 # reasoning tokens within completion
+    "usage_source":           str,                 # "provider_reported" | "estimated" | "unavailable"
+    "calculated_cost_usd":    float | None,        # exact Decimal calculated cost (None if model unknown)
+    "estimated_cost_usd":     float | None,        # preflight estimated cost
+    "pricing_version":        str | None,          # version string of applied pricing catalog
+    "provider_request_id":    str | None,          # provider-assigned request ID
+    "latency_ms":             int,                 # round-trip latency in ms
+    "retry_count":            int,                 # retry count before final result
+    "outcome_kind":           str,                 # "allowed" | "error"
+    "error_code":             str | None,          # classified error class or None
+    "error_detail":           str | None,          # sanitized, redacted error detail
 }
 ```
 

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
+import sys
 import tempfile
 from collections.abc import Iterator
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import pgserver
 import pytest
