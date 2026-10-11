@@ -168,12 +168,12 @@ def test_output_cap_bytes() -> None:
 
 
 def test_init_reexports() -> None:
-    """__init__.py must re-export SandboxPort, SandboxResult, SandboxUnavailable and not DockerSandbox."""
+    """__init__.py must re-export SandboxPort, SandboxResult, SandboxUnavailable, and DockerSandbox."""
     assert hasattr(warden.sandbox, "SandboxPort")
     assert hasattr(warden.sandbox, "SandboxResult")
     assert hasattr(warden.sandbox, "SandboxUnavailable")
+    assert hasattr(warden.sandbox, "DockerSandbox")
     assert "SandboxPort" in warden.sandbox.__all__
     assert "SandboxResult" in warden.sandbox.__all__
     assert "SandboxUnavailable" in warden.sandbox.__all__
-    assert not hasattr(warden.sandbox, "DockerSandbox")
-    assert "DockerSandbox" not in dir(warden.sandbox)
+    assert "DockerSandbox" in warden.sandbox.__all__

@@ -17,7 +17,7 @@ import pytest
 
 import warden.sandbox
 from warden.sandbox import ToolProfile, get_profile
-from warden.sandbox.registry import SEED_PROFILES
+from warden.sandbox.registry import DEFAULT_IMAGE, SEED_PROFILES
 
 PHASE_1_TOOLS: list[str] = ["shell", "file_inspect", "file_cleanup", "code"]
 
@@ -48,7 +48,7 @@ def test_seeded_caps_match_locked_defaults() -> None:
         assert profile.timeout_s == 30
         assert profile.memory == "256m"
         assert profile.cpus == "1"
-        assert profile.image == "alpine:3.20"
+        assert profile.image == DEFAULT_IMAGE
 
 
 def test_mode_settings_shell_only_has_shell_mode() -> None:
@@ -119,7 +119,7 @@ def test_tool_profile_defaults() -> None:
     assert custom.timeout_s == 30
     assert custom.memory == "256m"
     assert custom.cpus == "1"
-    assert custom.image == "alpine:3.20"
+    assert custom.image == DEFAULT_IMAGE
 
 
 def test_reexports() -> None:

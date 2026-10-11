@@ -10,12 +10,17 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+DEFAULT_IMAGE: str = (
+    "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+)
+
+
 @dataclass(frozen=True)
 class ToolProfile:
     """Immutable execution profile configuration for sandboxed tools.
 
     Attributes:
-        name: Unique identifier of the tool.
+        name: Unique identifier for the tool.
         mode: Execution mode ('exec' for direct binary invocation, 'shell' for shell wrapping).
         mount: Filesystem isolation mount mode ('none', 'ro' for read-only, 'rw' for read-write).
         timeout_s: Maximum execution duration in seconds before termination.
@@ -30,7 +35,7 @@ class ToolProfile:
     timeout_s: int = 30
     memory: str = "256m"
     cpus: str = "1"
-    image: str = "alpine:3.20"
+    image: str = DEFAULT_IMAGE
 
 
 SEED_PROFILES: dict[str, ToolProfile] = {
@@ -41,7 +46,7 @@ SEED_PROFILES: dict[str, ToolProfile] = {
         timeout_s=30,
         memory="256m",
         cpus="1",
-        image="alpine:3.20",
+        image=DEFAULT_IMAGE,
     ),
     "file_inspect": ToolProfile(
         name="file_inspect",
@@ -50,7 +55,7 @@ SEED_PROFILES: dict[str, ToolProfile] = {
         timeout_s=30,
         memory="256m",
         cpus="1",
-        image="alpine:3.20",
+        image=DEFAULT_IMAGE,
     ),
     "file_cleanup": ToolProfile(
         name="file_cleanup",
@@ -59,7 +64,7 @@ SEED_PROFILES: dict[str, ToolProfile] = {
         timeout_s=30,
         memory="256m",
         cpus="1",
-        image="alpine:3.20",
+        image=DEFAULT_IMAGE,
     ),
     "code": ToolProfile(
         name="code",
@@ -68,7 +73,7 @@ SEED_PROFILES: dict[str, ToolProfile] = {
         timeout_s=30,
         memory="256m",
         cpus="1",
-        image="alpine:3.20",
+        image=DEFAULT_IMAGE,
     ),
 }
 
@@ -86,6 +91,7 @@ def get_profile(tool_name: str) -> ToolProfile | None:
 
 
 __all__ = [
+    "DEFAULT_IMAGE",
     "SEED_PROFILES",
     "ToolProfile",
     "get_profile",

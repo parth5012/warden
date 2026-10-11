@@ -5,6 +5,7 @@ Provides the SandboxPort boundary and execution result types.
 
 from __future__ import annotations
 
+from warden.sandbox.docker import DockerSandbox
 from warden.sandbox.port import (
     SandboxPort,
     SandboxResult,
@@ -16,6 +17,7 @@ from warden.sandbox.registry import (
 )
 
 __all__ = [
+    "DockerSandbox",
     "SandboxPort",
     "SandboxResult",
     "SandboxUnavailable",
