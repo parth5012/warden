@@ -1,5 +1,20 @@
 # LOG.md — Warden
 
+## 2026-10-11 — PR #1 filed + CodeRabbit review fixes
+
+**Status:** Done (checks green, PR OPEN — not merged)
+
+- OCR review + 7 fixes committed as `4fd3ff0`; PR #1 opened against main:
+  https://github.com/parth5012/warden/pull/1 (linked to thread).
+- CodeRabbit triggered via `@coderabbitai review` (auto-skip on OSS repo); 3 comments, ALL applied as `1ad4ce4`:
+  1. `_redact` — mask complete URI userinfo (malformed `password` with `@` leaked suffix); urlsplit-based, query `@` untouched; quoted keyword passwords covered. Verified vs 6 cases.
+  2. `_prompt_for_resume` empty input → `continue` (stay in prompt loop; returning let plain text take the invoke path on a parked thread).
+  3. `_prompt_for_resume` failed resume (None) → re-prompt, don't treat as decision.
+- Verified after fixes: pytest 12 passed, mypy 0 errors, redaction case-check.
+- Checks: CodeRabbit pass, GitGuardian pass; mergeStateStatus CLEAN; not behind main.
+- Babysit loop: stopped at green. PR intentionally NOT merged — `merge-pr` or human merge required.
+- OCR config note: gateway model `agy/gemini-3.7-flash-medium` dead upstream; review ran with `--model auto/best-coding` (config backup `/tmp/opencode/ocr-config-backup.json`).
+
 ## 2026-10-11 — OCR review round 1 + fixes (pre-PR)
 
 **Status:** Done (verification green)
