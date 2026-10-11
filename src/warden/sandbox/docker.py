@@ -176,7 +176,10 @@ class DockerSandbox:
                 kill_proc = await asyncio.create_subprocess_exec(
                     "docker", "kill", container_name
                 )
-                await kill_proc.wait()
+                try:
+                    await asyncio.wait_for(kill_proc.wait(), timeout=5.0)
+                except (TimeoutError, asyncio.TimeoutError):
+                    kill_proc.kill()
             except Exception:
                 pass
 
@@ -184,7 +187,10 @@ class DockerSandbox:
                 rm_proc = await asyncio.create_subprocess_exec(
                     "docker", "rm", "-f", container_name
                 )
-                await rm_proc.wait()
+                try:
+                    await asyncio.wait_for(rm_proc.wait(), timeout=5.0)
+                except (TimeoutError, asyncio.TimeoutError):
+                    rm_proc.kill()
             except Exception:
                 pass
 
@@ -194,7 +200,7 @@ class DockerSandbox:
                 pass
 
             try:
-                await proc.wait()
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
             except Exception:
                 pass
 
