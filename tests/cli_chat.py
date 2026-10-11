@@ -240,6 +240,9 @@ async def _prompt_for_resume(
         except (EOFError, KeyboardInterrupt):
             print()
             return False
+        if raw in ("/quit", "/exit"):
+            # Leave the thread parked; never treat quit as a deny decision.
+            return False
         if not raw:
             print("empty decision — still parked")
             continue
@@ -286,8 +289,10 @@ DEFAULT_PG_DIR = "/tmp/opencode/pgdata-warden"
 def _resolve_pg_uri(explicit: str | None) -> str:
     """Env var > --pg flag > bundled pgserver at DEFAULT_PG_DIR.
 
-    The bundled server is left running after exit on purpose: restart the
-    CLI and /resume the same thread — that IS the crash-recovery demo.
+    pgserver stops the server at process exit (cleanup_mode='stop'), but the
+    data directory persists — the next CLI start re-attaches to the same
+    checkpoints. Restart the CLI and /resume the same thread: that IS the
+    crash-recovery demo.
     """
     import os
 

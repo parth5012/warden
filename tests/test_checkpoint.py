@@ -228,3 +228,40 @@ async def test_history_fail_closed_after_close(pg_uri: str) -> None:
     err = await mgr.get_state_history(graph, config)
     assert isinstance(err, Error)
     assert err.reason == "governance_unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Redaction (checkpoint.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("conn_string", "expected"),
+    [
+        # normal URI: userinfo fully masked
+        (
+            "postgresql://alice:s3cret@host:5432/db",
+            "postgresql://***@host:5432/db",
+        ),
+        # malformed password containing '@' — whole userinfo must vanish
+        ("postgresql://user:p@ss@host/db", "postgresql://***@host/db"),
+        # keyword DSN: password masked
+        (
+            "host=db.example.com port=5432 password=secret user=app",
+            "host=db.example.com port=5432 password=*** user=app",
+        ),
+        # quoted keyword password
+        (
+            "host=/tmp/sock password='my pass' dbname=app",
+            "host=/tmp/sock password=*** dbname=app",
+        ),
+        # '@' in query string, no userinfo — untouched
+        ("postgresql://host/db?opt=a@b", "postgresql://host/db?opt=a@b"),
+        # userinfo without password
+        ("postgresql://user@host/db", "postgresql://***@host/db"),
+    ],
+)
+def test_redact_masks_credentials(conn_string: str, expected: str) -> None:
+    from warden.checkpoint import _redact
+
+    assert _redact(conn_string) == expected
