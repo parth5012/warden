@@ -242,11 +242,14 @@ async def _prompt_for_resume(
             return False
         if not raw:
             print("empty decision — still parked")
-            return True
+            continue
         result = await _resume_and_render(
             graph, config, manager, _parse_resume_value(raw)
         )
-        if result is None or not result.get("__interrupt__"):
+        if result is None:
+            print("resume failed — still parked")
+            continue
+        if not result.get("__interrupt__"):
             return True
         print("graph re-parked — decision required again")
 

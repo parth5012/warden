@@ -37,11 +37,32 @@ logger = logging.getLogger("warden.checkpoint")
 
 def _redact(conn_string: str) -> str:
     """Redact secrets from connection strings (URI and keyword DSN forms)."""
-    # URI form: postgresql://user:password@host
-    redacted = re.sub(r"://([^:/@]+):([^@]+)@", r"://\1:***@", conn_string)
-    # keyword/value form: password=secret (also matches "password 'secret'")
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        parts = urlsplit(conn_string)
+    except ValueError:
+        # Unparseable (e.g. invalid IPv6): over-redact the authority —
+        # losing host detail beats leaking credentials.
+        return re.sub(r"(://).*?(?=/|$)", r"://***", conn_string, count=1)
+
+    if parts.scheme and "@" in parts.netloc:
+        # Mask the COMPLETE userinfo — it may contain unencoded '@'
+        # (malformed but possible: postgresql://user:p@ss@host). rsplit on
+        # the last '@' keeps the host intact; query data is untouched.
+        host = parts.netloc.rsplit("@", 1)[-1]
+        redacted = urlunsplit(
+            (parts.scheme, f"***@{host}", parts.path, parts.query, parts.fragment)
+        )
+    else:
+        redacted = conn_string
+
+    # keyword/value DSN form: password=secret | password='my pass' | password="my pass"
     redacted = re.sub(
-        r"(\bpassword\s*=\s*)(\S+)", r"\1***", redacted, flags=re.IGNORECASE
+        r"(\bpassword\s*=\s*)(?:'[^']*'|\"[^\"]*\"|\S+)",
+        r"\1***",
+        redacted,
+        flags=re.IGNORECASE,
     )
     return redacted
 
