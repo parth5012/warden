@@ -347,7 +347,7 @@ async def invoke_agent_draft(
         extra_params={"reasoning_effort": "low"},
     )
     if isinstance(result, JSONResponse):
-        payload = json.loads(result.body)
+        payload = json.loads(bytes(result.body))
         return (
             f"Request blocked by Aegis policy ({payload.get('policy_name', 'unknown')}): "
             f"{payload.get('reason', 'This request was denied.')}"

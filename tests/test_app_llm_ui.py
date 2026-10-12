@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 from app import main as app_main
 from app.main import app
 from backend.api import llm as llm_api
+from warden.config import settings
 from warden.llm.types import LLMRequest
 
 client = TestClient(app)
@@ -153,7 +154,7 @@ def test_guarded_llm_ui_surfaces_missing_provider_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setattr(llm_api.settings, "groq_api_key", None)
+    monkeypatch.setattr(settings, "groq_api_key", None)
     response = client.post(
         "/llm/invoke",
         data={
