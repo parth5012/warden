@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+
+{% block title %}Blast Radius: {{ action.id }} — Warden{% endblock %}
+
+{% block content %}
+<!-- Navigation Back Link -->
+<div style="margin-bottom: 0.85rem;">
+    <a href="/approvals" style="color: var(--text-muted); text-decoration: none; font-size: 0.825rem; display: inline-flex; align-items: center; gap: 0.4rem; transition: color 0.15s ease;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        Back to Interception Gate
+    </a>
+</div>
+
+<!-- Blast Radius Header Banner -->
+<div class="blast-header">
+    <div style="display: flex; gap: 1.15rem; align-items: center;">
+        <div class="action-type-icon" style="width: 48px; height: 48px; background: var(--color-ruby-bg); color: var(--color-ruby-text); border: 1px solid var(--color-ruby-border); box-shadow: var(--color-ruby-glow);">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+        </div>
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <h1 style="font-size: 1.45rem; font-weight: 700; letter-spacing: -0.025em;">{{ action.title }}</h1>
+                <span class="badge {% if action.risk|lower == 'critical' %}badge-critical{% elif action.risk|lower == 'high' %}badge-high{% elif action.risk|lower == 'medium' %}badge-medium{% else %}badge-low{% endif %}">{{ action.risk }} Risk</span>
+                <span class="badge badge-agent-model">{{ action.agent_model|default('autonomous-agent') }}</span>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                Proposed by <strong style="color: var(--text-primary);">{{ action.agent }}</strong> • Target: <code class="code-font" style="color: var(--color-cyan-text);">{{ action.target_resource }}</code> • {{ action.affected_files|length }} affected resource{% if action.affected_files|length != 1 %}s{% endif %} · {{ action.operation|replace("_", " ")|title }}
+            </p>
+        </div>
+    </div>
+
+    <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="code-font" style="font-size: 0.8rem; color: var(--text-muted);">Action ID:</span>
+            <span class="code-font" style="font-weight: 700; color: var(--color-cyan-text);">{{ action.id }}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="code-font" style="font-size: 0.78rem; color: var(--text-muted);">Canonical Hash:</span>
+            <button class="copy-hash-btn" data-hash="{{ action.hash }}" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: var(--color-cyan-text); padding: 0.15rem 0.5rem; border-radius: 4px; font-family: var(--font-mono); font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; transition: all 0.15s ease;">
+                {{ action.hash[:12] }}…
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+        </div>
+        <span class="code-font tabular-nums" style="font-size: 0.78rem; color: var(--text-muted);">{{ action.time_ago }}</span>
+    </div>
+</div>
+
+<!-- Review metadata strip: explicit, operation-neutral facts -->
+<section class="br-review-strip" aria-label="Action review metadata">
+    <div class="br-meta-item">
+        <span class="br-meta-label">Review status</span>
+        <strong class="br-meta-value">{{ action.status }}</strong>
+    </div>
+    <div class="br-meta-item">
+        <span class="br-meta-label">Action version</span>
+        <strong class="br-meta-value code-font">v{{ action.version }}</strong>
+    </div>
+    <div class="br-meta-item">
+        <span class="br-meta-label">Requested by</span>
+        <strong class="br-meta-value">{{ action.requested_by|default(action.agent) }}</strong>
+    </div>
+    <div class="br-meta-item">
+        <span class="br-meta-label">Review data</span>
+        <strong class="br-meta-value">Illustrative demo snapshot</strong>
+    </div>
+</section>
+
+<!-- Tabs Navigation -->
+<div class="tabs-container" data-content-target="blast-tab-panes">
+    <div class="blast-tabs">
+        <button class="tab-btn active" data-tab="tab-blast-radius">Blast Radius & Impact Diff</button>
+        <button class="tab-btn" data-tab="tab-policy">Policy L1/L2 Check</button>
+        <button class="tab-btn" data-tab="tab-snapshot">Canonical Snapshot Signature</button>
+        <button class="tab-btn" data-tab="tab-plan">Sandbox Execution Plan</button>
+        <button class="tab-btn" data-tab="tab-traces">Execution Trace / LangGraph</button>
+    </div>
+</div>
+
+<div id="blast-tab-panes">
+    <!-- Tab: Blast Radius & Impact Diff (Active Default) -->
+    <div id="tab-blast-radius" class="tab-pane active">
+        <!-- Impact vectors are rendered from this action's stored demo descriptor. -->
+        <section class="br-impact-section" aria-labelledby="br-impact-heading">
+            <div class="br-section-heading">
+                <div>
+                    <h2 id="br-impact-heading">Impact overview</h2>
+                    <p>Potential impact described by the action snapshot. These values are illustrative and are not live sandbox telemetry.</p>
+                </div>
+                <span class="br-snapshot-chip">Action v{{ action.version }}</span>
+            </div>
+            <div class="vector-matrix-grid br-vector-grid">
+                {% for vector_name, vector_value in action.impact_vectors.items() %}
+                <article class="vector-card br-vector-card">
+                    <div class="br-vector-topline">
+                        <span class="vector-label">{{ vector_name|replace("_", " ")|title }}</span>
+                        <span class="br-vector-index">{{ loop.index|string }}</span>
+                    </div>
+                    <div class="vector-val br-vector-value">{{ vector_value }}</div>
+                    <div class="br-vector-note">
+                        {% if vector_value|lower == "none" %}
+                            <span class="br-neutral-dot"></span> No impact declared in this snapshot
+                        {% else %}
+                            <span class="br-warning-dot"></span> Review before making a decision
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Policy Escalation Alert Callout -->
+        <div style="background: var(--color-ruby-bg); border: 1px solid var(--color-ruby-border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 0.85rem; box-shadow: var(--color-ruby-glow);">
+            <div style="color: var(--color-ruby-text); flex-shrink: 0; margin-top: 2px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </div>
+            <div>
+                <div style="font-weight: 700; color: var(--color-ruby-text); font-size: 0.9rem;">
+                    Policy review: {{ action.policy_id|default('Policy not supplied') }}
+                </div>
+                <div style="font-size: 0.825rem; color: var(--text-secondary); margin-top: 0.25rem; line-height: 1.5;">
+                    {{ action.policy_reason }} Review the affected resources and impact details below. This page is a demo preview; it does not execute the action or guarantee that a rollback is available.
+                </div>
+            </div>
+        </div>
+
+        <!-- Safety and impact summary -->
+        <section class="br-safety-grid" aria-label="Safety review summary">
+            <article class="br-safety-card">
+                <span class="br-safety-label">Affected resources</span>
+                <strong>{{ action.affected_files|length }}</strong>
+                <p>Items included in this action snapshot</p>
+            </article>
+            <article class="br-safety-card">
+                <span class="br-safety-label">Operation</span>
+                <strong class="br-operation-name">{{ action.operation|replace("_", " ")|title }}</strong>
+                <p>Review the operation semantics before authorization</p>
+            </article>
+            <article class="br-safety-card">
+                <span class="br-safety-label">Reversibility</span>
+                <strong>Not verified</strong>
+                <p>Confirm backups or rollback support with the execution owner</p>
+            </article>
+            <article class="br-safety-card">
+                <span class="br-safety-label">Expiry</span>
+                <strong>Not provided</strong>
+                <p>Production integration should enforce an approval deadline</p>
+            </article>
+        </section>
+
+        <div class="br-review-guidance">
+            <strong>Before deciding</strong>
+            <span>
+                Confirm the action ID and version, inspect every affected resource, check the policy reason,
+                and verify whether the current policy/lease still permits this exact action. A matching hash
+                identifies the displayed snapshot; it does not prove that external resources have remained unchanged.
+            </span>
+        </div>
+
+        <!-- Interactive File Explorer and Diff Inspector -->
+        <div style="display: grid; grid-template-columns: 320px 1fr; gap: 1.15rem;">
+            <!-- Affected Files Tree (Clickable to switch diff!) -->
+            <div class="card-panel">
+                <div class="panel-header">
+                    <span class="panel-title">Affected Resources ({{ action.affected_files|length|default(5) }})</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted);">Click file to inspect</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;" id="file-tree-container">
+                    {% for file in action.affected_files %}
+                    <div class="file-tree-item {% if loop.first %}active{% endif %}" data-file-index="{{ loop.index0 }}">
+                        <div>
+                            <div class="code-font" style="font-size: 0.8rem; font-weight: 600; color: {% if loop.first %}var(--color-ruby-text){% else %}var(--text-primary){% endif %};">
+                                {{ file.path }}
+                            </div>
+                            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.1rem;">
+                                {{ file.type }} • {{ file.size }}
+                            </div>
+                        </div>
+                        <span class="badge badge-diff-deleted">{{ file.diff_badge }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Dynamic Diff Viewer Panes -->
+            <div class="card-panel">
+                <div class="panel-header">
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span class="panel-title">Resource Content & Diff Inspector</span>
+                    </div>
+                    <div style="display: flex; gap: 0.35rem;">
+                        <button id="btn-diff-unified" class="btn-action active" style="background: var(--color-cyan-bg); color: var(--color-cyan-text); border-color: var(--color-cyan-border);">Unified</button>
+                        <button id="btn-diff-split" class="btn-action" style="background: var(--bg-surface); color: var(--text-secondary); border-color: var(--border-subtle);">Split View</button>
+                    </div>
+                </div>
+
+                <!-- Diff Panes for each file -->
+                {% for file in action.affected_files %}
+                <div class="file-diff-pane" data-pane-index="{{ loop.index0 }}" style="display: {% if loop.first %}block{% else %}none{% endif %};">
+                    <div class="diff-box">
+                        <div class="diff-box-header">
+                            <div>
+                                <span style="font-weight: 600; color: var(--text-primary);">{{ file.path }}</span>
+                                <span style="color: var(--text-muted); margin-left: 0.5rem; font-size: 0.78rem;">({{ file.type }})</span>
+                            </div>
+                            <span style="color: var(--color-ruby-text); font-weight: 600; font-size: 0.78rem;">
+                                {% if file.diff_type == 'binary' %}Binary asset · no text diff{% else %}{{ file.lines_added|default(0) }} added · {{ file.lines_deleted|default(0) }} removed{% endif %}
+                            </span>
+                        </div>
+
+                        {% if file.diff_type == 'binary' %}
+                        <!-- Binary File Callout -->
+                        <div style="padding: 2.25rem 1.5rem; text-align: center; background: var(--bg-diff-canvas);">
+                            <div style="color: var(--color-amber-text); margin-bottom: 0.75rem;">
+                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                            </div>
+                            <div style="font-weight: 600; font-size: 0.9rem;">Binary Asset: No Raw Text Diff Available</div>
+                            <div style="font-size: 0.825rem; color: var(--text-secondary); margin-top: 0.4rem; max-width: 520px; margin-left: auto; margin-right: auto; line-height: 1.55;">
+                                {{ file.binary_warning|default('This is an opaque binary resource. Unlinking will free bytes from filesystem storage.') }}
+                            </div>
+                        </div>
+                        {% else %}
+                        <!-- Text Line Diff -->
+                        {% for line in file.preview_content %}
+                        <div class="diff-line {% if line.type == 'del' %}deletion{% elif line.type == 'add' %}addition{% else %}same{% endif %}">
+                            <span class="diff-gutter">{{ line.num }}</span>
+                            <span>{% if line.type == 'del' %}- {% elif line.type == 'add' %}+ {% else %}  {% endif %}{{ line.text }}</span>
+                        </div>
+                        {% endfor %}
+                        <div style="padding: 0.65rem 1rem; color: var(--text-muted); font-style: italic; background: var(--bg-canvas); font-size: 0.78rem;">
+                            ... ({{ file.lines_deleted|default(100) }} total lines affected)
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Policy L1/L2 Check -->
+    <div id="tab-policy" class="tab-pane">
+        <div class="card-panel">
+            <div class="panel-header">
+                <span class="panel-title">Policy Engine Multi-Tier Verdict</span>
+            </div>
+            <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                Evaluated by Yash's Policy Engine against lease <code>#LSE-901</code> at <code class="code-font tabular-nums">2024-01-15 14:32:12 UTC</code>.
+            </p>
+            <div class="violation-row" style="margin-bottom: 0.75rem;">
+                <div>
+                    <span class="badge badge-emerald">L1 Static Check</span>
+                    <strong style="margin-left: 0.5rem; font-size: 0.825rem;">Structural Schema Validity</strong>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        Action contains valid schema, non-null run_id, and correct tool payload types.
+                    </div>
+                </div>
+                <span class="badge badge-emerald">Passed</span>
+            </div>
+            <div class="violation-row">
+                <div>
+                    <span class="badge badge-critical">L2 Semantic Gate</span>
+                    <strong style="margin-left: 0.5rem; font-size: 0.825rem;">Mass Deletion Threshold Exceeded (SEC-FS-04)</strong>
+                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        Operations proposing bulk unlinking of >3 files require explicit operator review.
+                    </div>
+                </div>
+                <span class="badge badge-critical">Escalated</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Canonical Snapshot Signature -->
+    <div id="tab-snapshot" class="tab-pane">
+        <div class="card-panel">
+            <div class="panel-header">
+                <span class="panel-title">Cryptographic Action Snapshot</span>
+                <span class="badge badge-cyan">Lock 1: Immutable Action Seam</span>
+            </div>
+            <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                Approvals bind directly to the canonical sorted JSON payload SHA-256 digest, preventing payload mutation.
+            </p>
+            <div style="background: var(--bg-diff-canvas); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 1.15rem; font-family: var(--font-mono); font-size: 0.78rem;">
+                <div style="color: var(--color-cyan-text); margin-bottom: 0.5rem; font-weight: 600;">
+                    // SHA-256 Canonical Action Digest:
+                </div>
+                <div style="color: var(--text-primary); font-weight: 700; word-break: break-all; margin-bottom: 1rem;">
+                    {{ action.hash }}
+                </div>
+                <div style="color: var(--text-muted);">
+                    Rendered descriptor length: <span style="color: var(--text-primary);">{{ action|string|length }} characters</span> • Idempotency key: <span style="color: var(--text-primary);">{{ action.id }}</span> • Status: <span style="color: var(--color-amber-text);">PARKED_AT_GATE</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Sandbox Execution Plan -->
+    <div id="tab-plan" class="tab-pane">
+        <div class="card-panel">
+            <div class="panel-header">
+                <span class="panel-title">Sandbox Worker Execution Plan</span>
+            </div>
+            <p style="font-size: 0.825rem; color: var(--text-secondary); line-height: 1.6;">
+                Worker Principal: <code class="code-font">worker-01 (Parth Subprocess Sandbox)</code><br>
+                Network Jail: <code class="code-font">Isolated (No external egress allowed)</code><br>
+                Filesystem Jail: <code class="code-font">/workspace/sandbox_jail/</code><br>
+                Durable Outbox Queue: <code class="code-font">outbox_jobs (Transaction Lock Level 4)</code>
+            </p>
+        </div>
+    </div>
+
+    <!-- Tab: Execution Trace / LangGraph -->
+    <div id="tab-traces" class="tab-pane">
+        <div class="card-panel">
+            <div class="panel-header">
+                <span class="panel-title">LangGraph Checkpoint & LangSmith Trace</span>
+            </div>
+            <p style="font-size: 0.825rem; color: var(--text-secondary); line-height: 1.6;">
+                Checkpoint Step: <code class="code-font">Step #4 (Interrupt parked via run_gated)</code><br>
+                Thread ID: <code class="code-font">th_7129e3_autonomous</code><br>
+                Dry-run Status: <code class="code-font" style="color: var(--color-emerald-text);">Rollback verified clean by Yashit's runner</code>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Sticky Bottom Tactical Decision Dock -->
+<div class="sticky-approval-bar">
+    <div>
+        <div style="font-weight: 600; font-size: 0.875rem;">Human-in-the-Loop Interception Gate</div>
+        <div style="font-size: 0.78rem; color: var(--text-muted);">
+            Demo-only controls · snapshot hash: <span class="code-font" style="color: var(--color-cyan-text);">{{ action.hash[:16] }}…</span>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 0.65rem;">
+        <button class="btn-action btn-deny" disabled title="Disabled until authenticated server-side authorization, CSRF protection, and durable decision recording are implemented" style="padding: 0.55rem 1rem;">
+            <span class="key-hint">D</span> Deny Action
+        </button>
+        <button class="btn-action btn-escalate" disabled title="Disabled until authenticated server-side authorization, CSRF protection, and durable decision recording are implemented" style="padding: 0.55rem 1rem;">
+            <span class="key-hint">E</span> Escalate Review
+        </button>
+        <button class="btn-action btn-approve" disabled title="Disabled until authenticated server-side authorization, CSRF protection, and durable decision recording are implemented" style="padding: 0.55rem 1.15rem; font-weight: 600;">
+            <span class="key-hint">A</span> ✓ Authorize & Queue Sandbox Execution
+        </button>
+    </div>
+</div>
+{% endblock %}
+

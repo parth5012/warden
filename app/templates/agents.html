@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}AI Agents — Warden AI Governance Console{% endblock %}
+
+{% block content %}
+<section class="page-header agents-page-header">
+    <div>
+        <p class="agents-eyebrow">AGENT REGISTRY · GOVERNANCE VIEW</p>
+        <h1 class="page-title">AI Agents</h1>
+        <p class="page-subtitle">Inspect agent identity, current task, permissions, and policy posture. Values shown are illustrative demo data.</p>
+    </div>
+    <span class="agents-demo-label"><span></span> DEMO INVENTORY</span>
+</section>
+
+<section class="agents-kpi-grid" aria-label="Agent summary">
+    <article class="agents-kpi">
+        <span>Total agents</span>
+        <strong>{{ agent_stats.total }}</strong>
+        <small>Known in demo inventory</small>
+    </article>
+    <article class="agents-kpi">
+        <span>Executing</span>
+        <strong class="agents-green">{{ agent_stats.active }}</strong>
+        <small>Reported active state</small>
+    </article>
+    <article class="agents-kpi">
+        <span>Needs review</span>
+        <strong class="agents-amber">{{ agent_stats.review }}</strong>
+        <small>Related action requires review</small>
+    </article>
+    <article class="agents-kpi">
+        <span>Restricted</span>
+        <strong class="agents-red">{{ agent_stats.restricted }}</strong>
+        <small>Limited by current demo state</small>
+    </article>
+</section>
+
+<section class="agents-toolbar panel">
+    <div>
+        <h2>Registered agents</h2>
+        <p>Search by name, model, task, policy, or permission.</p>
+    </div>
+    <div class="agents-controls">
+        <label class="agents-search">
+            <span class="sr-only">Search agents</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="agent-search" type="search" placeholder="Search agents…" autocomplete="off">
+        </label>
+        <select id="agent-status-filter" aria-label="Filter by agent status">
+            <option value="all">All statuses</option>
+            <option value="executing">Executing</option>
+            <option value="needs review">Needs review</option>
+            <option value="idle">Idle</option>
+            <option value="restricted">Restricted</option>
+        </select>
+    </div>
+</section>
+
+<section class="agents-grid" id="agents-grid" aria-label="Agent cards">
+    {% for agent in agents %}
+    <article class="agent-card panel"
+             data-search="{{ (agent.name ~ ' ' ~ agent.model ~ ' ' ~ agent.task ~ ' ' ~ agent.policy ~ ' ' ~ (agent.permissions|join(' ')))|lower }}"
+             data-status="{{ agent.status|lower }}">
+        <div class="agent-card-top">
+            <div class="agent-avatar" aria-hidden="true">
+                {% if agent.name == "CodeAgent" %}CO
+                {% elif agent.name == "DBAgent" %}DB
+                {% elif agent.name == "DevAgent" %}DV
+                {% else %}OP{% endif %}
+            </div>
+            <div class="agent-title-wrap">
+                <h3>{{ agent.name }}</h3>
+                <p>{{ agent.id }}</p>
+            </div>
+            <span class="agent-status status-{{ agent.status|lower|replace(' ', '-') }}">{{ agent.status }}</span>
+        </div>
+
+        <div class="agent-model-row">
+            <span>MODEL</span>
+            <strong>{{ agent.model }}</strong>
+        </div>
+
+        <div class="agent-task-block">
+            <span class="agent-field-label">Current task</span>
+            <p>{{ agent.task }}</p>
+            <small>{{ agent.description }}</small>
+        </div>
+
+        <div class="agent-permissions">
+            <span class="agent-field-label">Declared permissions</span>
+            <div class="agent-chip-list">
+                {% for permission in agent.permissions %}
+                <span class="agent-chip">{{ permission }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="agent-card-footer">
+            <div>
+                <span class="agent-field-label">Policy</span>
+                <strong>{{ agent.policy }}</strong>
+            </div>
+            <div>
+                <span class="agent-field-label">Actions today</span>
+                <strong>{{ agent.actions_today }}</strong>
+            </div>
+            <div>
+                <span class="agent-field-label">Last seen</span>
+                <strong>{{ agent.last_seen }}</strong>
+            </div>
+        </div>
+        <div class="agent-card-note">
+            <span class="agent-note-dot"></span>
+            Demo state — not a live health or lease verification
+        </div>
+    </article>
+    {% endfor %}
+    <div id="agents-empty" class="agents-empty panel" hidden>
+        <strong>No agents match your filters</strong>
+        <p>Try a different search term or select All statuses.</p>
+    </div>
+</section>
+
+<script>
+(() => {
+    const search = document.getElementById("agent-search");
+    const filter = document.getElementById("agent-status-filter");
+    const cards = [...document.querySelectorAll(".agent-card")];
+    const empty = document.getElementById("agents-empty");
+
+    function applyFilters() {
+        const term = (search.value || "").trim().toLowerCase();
+        const status = filter.value.toLowerCase();
+        let visible = 0;
+
+        cards.forEach((card) => {
+            const matchesText = card.dataset.search.includes(term);
+            const matchesStatus = status === "all" || card.dataset.status === status;
+            const show = matchesText && matchesStatus;
+            card.hidden = !show;
+            if (show) visible += 1;
+        });
+        empty.hidden = visible !== 0;
+    }
+
+    search.addEventListener("input", applyFilters);
+    filter.addEventListener("change", applyFilters);
+})();
+</script>
+{% endblock %}
+
