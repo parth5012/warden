@@ -1,4 +1,4 @@
-"""Human-in-the-loop approval package for Warden governance."""
+"""Human-in-the-loop approval package for Aegis governance."""
 
 from warden.hitl.approvals import (
     APPROVAL_TTL_DEFAULT,

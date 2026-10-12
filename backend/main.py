@@ -1,4 +1,4 @@
-"""Warden application server uniting backend REST API and frontend Jinja/HTMX views."""
+"""Aegis application server uniting backend REST API and frontend Jinja/HTMX views."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from backend.api.runs import router as runs_router
 from backend.api.audit import router as audit_router
 from backend.api.telemetry import router as telemetry_router
 from backend.api.policies import router as policies_router
+from backend.api.llm import router as llm_router
 from frontend.views import router as frontend_router
 
 _ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -27,9 +28,9 @@ _STATIC_DIR = _ROOT_DIR / "frontend" / "static"
 
 
 def create_app() -> FastAPI:
-    """Create and configure the unified Warden FastAPI application."""
+    """Create and configure the unified Aegis FastAPI application."""
     app = FastAPI(
-        title="Warden — AI Agent Governance",
+        title="Aegis — AI Agent Governance",
         description="Unified server for AI agent governance, HITL approvals, telemetry, and audit logs.",
         version="0.1.0",
     )
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix="/api")
     app.include_router(telemetry_router, prefix="/api")
     app.include_router(policies_router, prefix="/api")
+    app.include_router(llm_router, prefix="/api")
 
     # Also mount health/ready at root per standard Kubernetes/container probes
     app.include_router(health_router)

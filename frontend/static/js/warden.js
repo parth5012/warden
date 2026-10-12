@@ -1,4 +1,4 @@
-// Warden UI helper script
+// Aegis UI helper script
 document.addEventListener("DOMContentLoaded", function () {
-  console.log("Warden UI initialized");
+  console.log("Aegis UI initialized");
 });

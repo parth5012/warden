@@ -1,4 +1,4 @@
-# Warden — Security Model
+# Aegis — Security Model
 
 > Trusted and untrusted inputs, enforcement posture, threat model, and unresolved risks.
 
@@ -6,7 +6,7 @@
 
 ## 1. Core Security Posture
 
-Warden's security is built on three principles:
+Aegis's security is built on three principles:
 
 1. **One seam.** Every action crosses `GuardedExecutor.execute()`. There is no bypass.
 2. **Fail-closed.** If the governance infrastructure is unavailable, actions are blocked, not allowed.
@@ -182,7 +182,7 @@ Every call to an LLM model must be represented as `Action(kind=ActionKind.LLM)` 
 
 An LLM receiving adversarial content (e.g. in a tool result or user message) may be manipulated into proposing a malicious action. The policy engine is the defense: the resulting `Action` must still pass policy evaluation before execution.
 
-Warden does not implement prompt-level input sanitization. This is an acknowledged gap.
+Aegis does not implement prompt-level input sanitization. This is an acknowledged gap.
 
 ### Provider allowlist
 
@@ -217,4 +217,4 @@ The following risks are explicitly acknowledged and not mitigated in Phase 1:
 5. **No prompt sanitization.** Adversarial content in tool results can influence subsequent LLM calls.
 6. **`external side effect uncertainty after crash.`** If a process is killed after an action begins execution but before `action_completed` is journaled, the system cannot determine whether the side effect completed. Operators must manually verify.
 
-Each risk must be reviewed before any production deployment of Warden.
+Each risk must be reviewed before any production deployment of Aegis.

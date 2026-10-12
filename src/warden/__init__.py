@@ -1,5 +1,6 @@
-"""Warden: AI Agent Governance & Human Accountability."""
+"""Aegis: AI Agent Governance & Human Accountability."""
 
-from warden.config import get_groq_llm, settings
+from warden.config import settings
+from warden.journal import InMemoryAuditJournal
 
-__all__ = ["get_groq_llm", "settings"]
+__all__ = ["InMemoryAuditJournal", "settings"]

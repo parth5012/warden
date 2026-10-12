@@ -1,4 +1,4 @@
-"""PolicyEngine for Warden.
+"""PolicyEngine for Aegis.
 
 Centralized policy evaluation boundary. Evaluates proposed Action objects
 against configured rules and returns deterministic PolicyResult decisions:

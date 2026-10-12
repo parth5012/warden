@@ -1,4 +1,4 @@
-"""System metrics tool for Warden governance.
+"""System metrics tool for Aegis governance.
 
 Accepts only allowlisted services and supported metrics.
 Bounds window_minutes to a configurable safe range.

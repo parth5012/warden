@@ -1,4 +1,4 @@
-"""Tool registration for GuardedExecutor in Warden.
+"""Tool registration for GuardedExecutor in Aegis.
 
 Wires all Phase 1 Step 2 tools into GuardedExecutor's HandlerRegistry:
 - get_system_metrics

@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "workflow",
   "meta": {
-    "title": "Warden HITL Gate Flow",
+    "title": "Aegis HITL Gate Flow",
     "subtitle": "execute() → escalate → park → inbox → approve → resume",
     "output": "warden-gate-flow.html"
   },
   "lanes": [
     { "id": "human", "label": "Human — approvals inbox" },
     { "id": "agent", "label": "Agent graph" },
-    { "id": "kernel", "label": "Warden kernel" },
+    { "id": "kernel", "label": "Aegis kernel" },
     { "id": "store", "label": "Postgres — journal" },
     { "id": "exceptions", "label": "Terminal exits", "variant": "exception" }
   ],

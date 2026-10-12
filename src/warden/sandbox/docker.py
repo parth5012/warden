@@ -1,4 +1,4 @@
-"""Docker sandbox adapter for tool execution in Warden.
+"""Docker sandbox adapter for tool execution in Aegis.
 
 Executes tool actions in ephemeral, read-only Docker containers with resource limits,
 network isolation (--network=none), tmpfs mounts, and fail-closed error handling.

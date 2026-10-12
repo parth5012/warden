@@ -1,4 +1,4 @@
-"""AuditJournal for Warden.
+"""AuditJournal for Aegis.
 
 Source-of-truth append-only audit event store.
 Records action requests (write-ahead), policy denials, gate requests,
@@ -8,6 +8,7 @@ gate decisions, action completion, and execution failures.
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
@@ -115,3 +116,37 @@ class InMemoryAuditJournal:
             if match:
                 filtered.append(ev)
         return filtered
+
+    async def append_llm_usage(self, event: JournalEvent) -> None:
+        """Append an LLM usage telemetry event (same redaction + idempotency as other events)."""
+        await self.append(event)
+
+    def record_llm_usage(
+        self,
+        *,
+        run_id: str,
+        thread_id: str,
+        action_id: str,
+        **payload: Any,
+    ) -> JournalEvent:
+        """Record an LLM usage telemetry event into this journal.
+
+        The payload is redacted before persistence (secrets / raw prompt and
+        response bodies are never retained).  This is the synchronous
+        counterpart used by the client's telemetry sink when the sink is
+        called from a synchronous context.
+        """
+        from warden.journal import JournalEvent, redact_secrets_in_obj
+
+        event = JournalEvent(
+            id=str(uuid.uuid4()),
+            run_id=run_id,
+            thread_id=thread_id,
+            action_id=action_id,
+            checkpoint_step=None,
+            kind="llm_usage",
+            actor=payload.get("actor"),
+            payload=redact_secrets_in_obj(payload),
+            ts=payload.get("timestamp") or datetime.now(timezone.utc),
+        )
+        self.events.append(event)

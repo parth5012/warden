@@ -1,4 +1,4 @@
-"""Sensitive file reading tool for Warden governance.
+"""Sensitive file reading tool for Aegis governance.
 
 Enforces:
 - Canonical path checks against approved root directory

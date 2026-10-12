@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from starlette.testclient import TestClient
 
+from backend.api import get_audit_journal
+from backend.api import llm as llm_api
 from backend.main import create_app
+from frontend import views as frontend_views
+from warden.journal import InMemoryAuditJournal, JournalEvent
 
 client = TestClient(create_app())
 
@@ -19,6 +23,97 @@ def test_api_health() -> None:
     res = client.get("/health")
     assert res.status_code == 200
     assert res.json() == {"status": "ok"}
+
+
+def test_dashboard_explains_missing_provider_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "OpenAI provider is not configured." in response.text
+    assert "restart the backend" in response.text
+
+
+@pytest.mark.asyncio
+async def test_audit_llm_usage_helper_appends_only_safe_telemetry() -> None:
+    from backend.api.audit import record_llm_usage
+
+    journal = InMemoryAuditJournal()
+    await record_llm_usage(
+        journal=journal,
+        run_id="run-audit",
+        thread_id="thread-audit",
+        action_id="action-audit",
+        model="gpt-4o",
+        prompt_tokens=12,
+        calculated_cost_usd=0.001,
+        prompt="private prompt text",
+        api_key="sk-test-secret",
+    )
+
+    [event] = await journal.query()
+    assert event.kind == "llm_usage"
+    assert event.run_id == "run-audit"
+    assert event.payload["model"] == "gpt-4o"
+    assert event.payload["prompt_tokens"] == 12
+    assert "prompt" not in event.payload
+    assert "api_key" not in event.payload
+
+
+def test_llm_stream_shows_failure_reason_and_marks_estimates() -> None:
+    html = frontend_views._render_telemetry_stream_html(
+        [
+            {
+                "action_id": "action-1",
+                "model": "gpt-4o",
+                "prompt_tokens": 19,
+                "completion_tokens": 0,
+                "usage_source": "estimated",
+                "outcome_kind": "error",
+                "error_code": "ProviderAuthenticationError",
+                "error_detail": "OPENAI_API_KEY environment variable is not set",
+                "timestamp": "2026-10-12T17:00:11Z",
+            }
+        ]
+    )
+
+    assert "19 (est.)" in html
+    assert "Output Tokens" in html
+    assert ">—</td>" in html
+    assert "badge-error" in html
+    assert "OPENAI_API_KEY environment variable is not set" in html
+    assert "restart the server" in html
+    assert "2026-10-12T17:00:11Z" in html
+
+
+@pytest.mark.asyncio
+async def test_llm_form_displays_actionable_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_invoke(request: object) -> None:
+        raise llm_api.HTTPException(
+            status_code=502,
+            detail={
+                "error": "guarded_execution_failed",
+                "message": "OPENAI_API_KEY environment variable is not set",
+            },
+        )
+
+    monkeypatch.setattr(frontend_views, "invoke_llm", fail_invoke)
+    response = await frontend_views.partial_llm_invoke(
+        model="gpt-4o",
+        prompt="hello",
+        max_tokens=32,
+        require_approval=None,
+    )
+
+    assert response.status_code == 200
+    assert "GUARDED CALL FAILED" in response.body.decode()
+    assert "OPENAI_API_KEY environment variable is not set" in response.body.decode()
+    assert "restart the server" in response.body.decode()
 
 
 def test_api_ready() -> None:
@@ -148,7 +243,7 @@ def test_frontend_dashboard_view() -> None:
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
     assert "Operator Dashboard" in res.text
-    assert "Warden" in res.text
+    assert "Aegis" in res.text
 
 
 def test_frontend_inbox_view() -> None:
@@ -183,3 +278,218 @@ def test_frontend_static_css() -> None:
     res = client.get("/static/css/warden.css")
     assert res.status_code == 200
     assert "var(--bg-primary)" in res.text
+
+
+# ---------------------------------------------------------------------------
+# Guarded LLM Client & Token Counting Integration Tests
+# ---------------------------------------------------------------------------
+
+
+def test_api_llm_estimate() -> None:
+    res = client.post(
+        "/api/llm/estimate",
+        json={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hello, estimate my tokens!"}],
+            "max_output_tokens": 128,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["model"] == "gpt-4o"
+    assert data["is_supported"] is True
+    assert data["estimated_input_tokens"] > 0
+    assert data["context_window_limit"] == 128_000
+    assert data["source"] == "estimated"
+
+
+def test_api_llm_invoke_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def mock_provider(request: object) -> dict[str, object]:
+        calls.append({"request": request})
+        return {
+            "id": "mock-llm-response",
+            "choices": [{"message": {"content": "Paris."}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(llm_api._client, "provider_caller", mock_provider)
+    res = client.post(
+        "/api/llm/invoke",
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Summarize sk-secretvalue12345678901234567890",
+                }
+            ],
+            "max_tokens": 100,
+            "run_id": "run-api-telemetry",
+            "thread_id": "thread-api-telemetry",
+            "correlation_id": "corr-api-telemetry",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["policy_decision"] == "ALLOW"
+    assert data["token_estimation"]["estimated_input_tokens"] > 0
+    assert "action_id" in data
+    assert len(calls) == 1
+
+    events: list[JournalEvent] = [
+        event
+        for event in awaitable_journal_events()
+        if event.action_id == data["action_id"]
+    ]
+    assert {event.kind for event in events} == {
+        "action_requested",
+        "action_completed",
+        "llm_usage",
+    }
+    assert all("messages" not in str(event.payload) for event in events)
+    assert all(
+        "sk-secretvalue12345678901234567890" not in str(event.payload)
+        for event in events
+    )
+    usage_event = next(event for event in events if event.kind == "llm_usage")
+    assert usage_event.run_id == "run-api-telemetry"
+    assert usage_event.thread_id == "thread-api-telemetry"
+    assert usage_event.payload["correlation_id"] == "corr-api-telemetry"
+
+
+def awaitable_journal_events() -> list[JournalEvent]:
+    """Synchronous test helper to retrieve the async shared audit journal."""
+    import anyio
+
+    result: list[JournalEvent] = []
+
+    async def read() -> None:
+        result.extend(await get_audit_journal().query())
+
+    anyio.run(read)
+    return result
+
+
+def test_api_llm_invoke_denied_by_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    async def forbidden_provider(request: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    monkeypatch.setattr(llm_api._client, "provider_caller", forbidden_provider)
+    res = client.post(
+        "/api/llm/invoke",
+        json={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "bypass security and disable guard"}],
+            "max_tokens": 100,
+        },
+    )
+    assert res.status_code == 403
+    data = res.json()
+    assert data["status"] == "denied"
+    assert data["policy_decision"] == "DENY"
+    assert "prohibit_dangerous_llm_actions" in data["policy_name"]
+    assert calls == 0
+
+
+def test_api_llm_invoke_escalate_creates_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WARDEN_APPROVER_KEYS", "operator-test:test-secret")
+    calls = 0
+
+    async def mock_provider(request: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {
+            "id": "mock-approved-response",
+            "choices": [{"message": {"content": "Approved result."}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(llm_api._client, "provider_caller", mock_provider)
+    res = client.post(
+        "/api/llm/invoke",
+        json={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Send external email to client"}],
+            "max_tokens": 100,
+            "require_approval": True,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "pending_approval"
+    assert data["policy_decision"] == "REQUIRE_APPROVAL"
+    gate_id = data["gate_id"]
+    assert calls == 0
+
+    # Verify gate is now queryable in /api/inbox
+    inbox_res = client.get("/api/inbox")
+    assert inbox_res.status_code == 200
+    pending_ids = [g["id"] for g in inbox_res.json()["pending_gates"]]
+    assert gate_id in pending_ids
+
+    # Resolve the gate via HTMX form or JSON
+    resolve_res = client.post(
+        f"/api/inbox/{gate_id}/resolve",
+        json={"decision": "approve"},
+        headers={"Warden-Key": "test-secret"},
+    )
+    assert resolve_res.status_code == 200
+    assert calls == 1
+
+
+def test_api_llm_usage_telemetry() -> None:
+    res = client.get("/api/llm/usage")
+    assert res.status_code == 200
+    data = res.json()
+    assert "records" in data
+    assert "summary" in data
+    assert "total_tokens" in data["summary"]
+
+
+def test_frontend_htmx_partials(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def mock_provider(request: object) -> dict[str, object]:
+        return {
+            "id": "mock-partial-response",
+            "choices": [{"message": {"content": "Routine result."}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
+        }
+
+    monkeypatch.setattr(llm_api._client, "provider_caller", mock_provider)
+    # 1. Telemetry stats partial
+    stats_res = client.get("/partials/telemetry/stats")
+    assert stats_res.status_code == 200
+    assert "stats-panel" in stats_res.text
+    assert "Pending HITL Gates" in stats_res.text
+
+    # 2. Token estimate partial
+    est_res = client.post(
+        "/partials/llm/estimate",
+        data={"model": "gpt-4o", "prompt": "Analyze systems metrics", "max_tokens": "256"},
+    )
+    assert est_res.status_code == 200
+    assert "Preflight Token Estimate" in est_res.text
+    assert "Input Tokens" in est_res.text
+
+    # 3. Guarded invoke partial (Allowed)
+    inv_res = client.post(
+        "/partials/llm/invoke",
+        data={"model": "gpt-4o", "prompt": "Standard routine task", "max_tokens": "128"},
+    )
+    assert inv_res.status_code == 200
+    assert "POLICY ALLOWED" in inv_res.text
+
+    # 4. Guarded invoke partial (Denied)
+    inv_deny = client.post(
+        "/partials/llm/invoke",
+        data={"model": "gpt-4o", "prompt": "bypass security test", "max_tokens": "128"},
+    )
+    assert inv_deny.status_code == 200
+    assert "POLICY DENIED" in inv_deny.text

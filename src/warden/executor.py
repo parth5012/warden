@@ -1,4 +1,4 @@
-"""GuardedExecutor — Centralized execution governance boundary for Warden.
+"""GuardedExecutor — Centralized execution governance boundary for Aegis.
 
 All tool and LLM actions must pass through GuardedExecutor.execute().
 Enforces:
@@ -39,6 +39,8 @@ from warden.policy.engine import (
     PolicyError,
     PolicyResult,
 )
+from warden.llm.types import BudgetConfig
+from warden.llm.client import GuardedLLMClient, LLMExecutionResult
 
 logger = logging.getLogger("warden.executor")
 
@@ -194,7 +196,16 @@ class GuardedExecutor:
         # Step 5: Write-ahead audit journal (action_requested)
         if self.journal is not None:
             try:
-                safe_payload = redact_secrets_in_obj(action.payload)
+                audit_payload: dict[str, Any]
+                if action.kind == ActionKind.LLM:
+                    audit_payload = {
+                        key: action.payload.get(key)
+                        for key in ("model", "provider", "max_tokens", "temperature")
+                        if key in action.payload
+                    }
+                else:
+                    audit_payload = action.payload
+                safe_payload = redact_secrets_in_obj(audit_payload)
                 await self.journal.append(
                     JournalEvent(
                         id=str(uuid.uuid4()),
@@ -256,8 +267,8 @@ class GuardedExecutor:
                             },
                         )
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.error("Journal action_denied failed: %s", redact_secrets_in_obj(str(exc)))
             # Handler is NEVER invoked. No approval can override terminal DENY.
             return Denied(
                 reason=policy_result.reason,
@@ -425,8 +436,9 @@ class GuardedExecutor:
                                 },
                             )
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.error("Journal gate_decided failed: %s", redact_secrets_in_obj(str(exc)))
+                        return Error(reason="governance_unavailable")
                 return Denied(
                     reason=f"Gate rejected by approver {approval.decided_by}: {approval.reason}",
                     policy="human_gate",
@@ -455,12 +467,17 @@ class GuardedExecutor:
                             },
                         )
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.error("Journal gate_decided failed: %s", redact_secrets_in_obj(str(exc)))
+                    return Error(reason="governance_unavailable")
 
         # Step 8: Execute handler (Only reached on valid ALLOW or approved ESCALATE)
         try:
-            if inspect.iscoroutinefunction(handler):
+            if action.kind == ActionKind.LLM:
+                # LLM actions are routed exclusively through GuardedLLMClient
+                # (which enforces policy again and invokes the provider adapter).
+                raw_result = await self._invoke_llm(action, run_id=action.run_id)
+            elif inspect.iscoroutinefunction(handler):
                 raw_result = await handler(action)
             else:
                 res = handler(action)
@@ -469,7 +486,8 @@ class GuardedExecutor:
                 else:
                     raw_result = res
         except Exception as exc:
-            logger.error("Handler error during execution of %s: %s", action.name, exc)
+            safe_error = redact_secrets_in_obj(str(exc))
+            logger.error("Handler error during execution of %s: %s", action.name, safe_error)
             if self.journal is not None:
                 try:
                     await self.journal.append(
@@ -483,13 +501,13 @@ class GuardedExecutor:
                             actor=context_obj.actor,
                             payload={
                                 "action_id": action.id,
-                                "error": str(exc),
+                                "error": safe_error,
                             },
                         )
                     )
                 except Exception:
                     pass
-            return Error(reason=f"handler_error: {str(exc)}")
+            return Error(reason=f"handler_error: {safe_error}")
 
         # Step 9: Final audit event and return Allowed
         if self.journal is not None:
@@ -505,9 +523,13 @@ class GuardedExecutor:
                         actor=context_obj.actor,
                         payload={
                             "action_id": action.id,
-                            "result": raw_result
-                            if isinstance(raw_result, (dict, list, str, int, float, bool))
-                            else str(raw_result),
+                            "result": (
+                                "[REDACTED_LLM_RESPONSE]"
+                                if action.kind == ActionKind.LLM
+                                else raw_result
+                                if isinstance(raw_result, (dict, list, str, int, float, bool))
+                                else str(raw_result)
+                            ),
                         },
                     )
                 )
@@ -515,6 +537,70 @@ class GuardedExecutor:
                 logger.warning("Failed to append action_completed: %s", exc)
 
         return Allowed(result=raw_result)
+
+    async def _invoke_llm(self, action: Action, run_id: str) -> LLMExecutionResult:
+        """Execute an LLM action through GuardedLLMClient.
+
+        Placement guarantee:
+
+        * Policy was already evaluated by PolicyEngine and returned ALLOW.
+        * The action passed all executor preflight checks (validation,
+          write-ahead journal, policy enforcement).
+        * This is the *only* place where the provider can be called.  DENY and
+          ESCALATE are handled above and never reach this method.
+
+        Args:
+            action: The LLM action (already policy-approved).
+            run_id: Canonical run id to resolve (model, provider, cost) before
+                the provider call and to record in the audit trail.
+
+        Returns:
+            The normalized LLM execution result.
+
+        Raises:
+            LLMClientError subclasses propagate to the caller, who then
+            releases/resolves the run budget reservation and journals the
+            failure.
+        """
+        client = self.llm_client
+
+        # Resolve provider configuration from the action payload (and allow code
+        # to inject a concrete client).  This mirrors the order used by
+        # GuardedLLMClient.resolve_model/provider, so an LLM action that reaches
+        # this seam always has a model, provider, and caller.
+        payload: dict[str, Any] = dict(action.payload)
+        model = str(payload.get("model") or action.name or "gpt-4o")
+        provider = str(payload.get("provider", "openai"))
+
+        # Attach the canonical run/thread identifiers to the action payload so
+        # that the configured client can resolve them without a second lookup.
+        payload.setdefault("_warden", {})
+        payload["_warden"]["run_id"] = run_id
+
+        # The client is injectable by code that owns the adapter; fall back to a
+        # fresh client per request so each call gets its own adapter instance
+        # and telemetry/journal wiring.  This keeps the adapter registry
+        # replaceable and avoids shared mutable state across calls.
+        if client is None:
+            client = GuardedLLMClient(
+                provider_caller=None,
+                tokenizer=None,  # use the client's own tokenizer
+                default_provider=provider,
+            )
+
+        # Run the normal guarded execution flow.  This is the ONLY provider
+        # call path, and it is only reached here.
+        exec_result = await client.invoke(
+            action,
+            budget_config=BudgetConfig(
+                max_input_tokens_per_request=payload.get("max_input_tokens_per_request"),
+                max_output_tokens_per_request=payload.get("max_output_tokens_per_request"),
+                max_total_tokens_per_request=payload.get("max_total_tokens_per_request"),
+                max_spend_per_request=payload.get("max_spend_per_request"),
+                max_spend_per_run=payload.get("max_spend_per_run"),
+            ),
+        )
+        return exec_result
 
     def _validate_action(self, action: Any) -> Error | None:
         if not isinstance(action, Action):

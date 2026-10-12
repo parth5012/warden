@@ -1,8 +1,8 @@
-# ARCHITECTURE.md — Warden
+# ARCHITECTURE.md — Aegis
 
 AI Agent Governance & Human Accountability System. Full system design — the shared understanding from the design grilling. Decisions are in `CONTEXT.md`; build order is in `ROADMAP.md`.
 
-## 1. What Warden is
+## 1. What Aegis is
 
 A governance layer that LangGraph agents run *through*. Every LLM call and tool call crosses one seam — the **GuardedExecutor** — which journals it, checks it against policy, parks it for human approval when policy is unsure, sandboxes it when it executes, and returns one honest verdict. Nothing downstream of the seam can be skipped.
 

@@ -1,4 +1,4 @@
-"""Focused tests for GuardedExecutor in Warden.
+"""Focused tests for GuardedExecutor in Aegis.
 
 Covers all requirements from Phase 1, Step 1:
 1. ALLOW executes the correct registered handler exactly once.
@@ -25,7 +25,9 @@ import pytest
 
 from warden.demo_graph import build_demo_graph
 from warden.executor import ExecutionContext, GuardedExecutor, HandlerRegistry
+from warden.hitl.approvals import InMemoryApprovalStore
 from warden.journal import InMemoryAuditJournal, JournalEvent
+from warden.llm import GuardedLLMClient, LLMRequest
 from warden.models import (
     Action,
     ActionKind,
@@ -559,3 +561,204 @@ async def test_missing_policy_engine_fails_closed() -> None:
     assert isinstance(outcome, Error)
     assert outcome.reason == "governance_unavailable"
     assert handler_called is False
+
+
+def _llm_action(prompt: str = "summarize this") -> Action:
+    return Action(
+        id="act-guarded-llm",
+        kind=ActionKind.LLM,
+        name="gpt-4o",
+        payload={
+            "model": "gpt-4o",
+            "provider": "openai",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 64,
+        },
+        run_id="run-guarded-llm",
+        thread_id="thread-guarded-llm",
+    )
+
+
+def _llm_client(provider: Any) -> GuardedLLMClient:
+    return GuardedLLMClient(provider_caller=provider)
+
+
+@pytest.mark.asyncio
+async def test_executor_allows_llm_through_client_exactly_once() -> None:
+    calls = 0
+
+    async def provider(request: LLMRequest) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {
+            "choices": [{"message": {"content": "guarded result"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+        }
+
+    journal = InMemoryAuditJournal()
+    policy = PolicyEngine(
+        rules=[
+            PolicyRule(
+                name="allow_llm",
+                decision=PolicyDecision.ALLOW,
+                action_kinds=(ActionKind.LLM,),
+                predicate=lambda action, ctx: True,
+            )
+        ]
+    )
+    executor = GuardedExecutor(
+        journal=journal,
+        policy=policy,
+        llm_client=_llm_client(provider),
+        require_audit=True,
+    )
+    outcome = await executor.execute(_llm_action())
+
+    assert isinstance(outcome, Allowed)
+    assert outcome.result.result == "guarded result"
+    assert calls == 1
+    events = await journal.query()
+    assert [event.kind for event in events] == [
+        "action_requested",
+        "action_completed",
+    ]
+    assert all("messages" not in str(event.payload) for event in events)
+    assert events[-1].payload["result"] == "[REDACTED_LLM_RESPONSE]"
+
+
+@pytest.mark.asyncio
+async def test_executor_denies_llm_without_calling_provider() -> None:
+    calls = 0
+
+    async def provider(request: LLMRequest) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    journal = InMemoryAuditJournal()
+    policy = PolicyEngine(
+        rules=[
+            PolicyRule(
+                name="deny_llm",
+                decision=PolicyDecision.DENY,
+                action_kinds=(ActionKind.LLM,),
+                predicate=lambda action, ctx: True,
+            )
+        ]
+    )
+    executor = GuardedExecutor(
+        journal=journal,
+        policy=policy,
+        llm_client=_llm_client(provider),
+        require_audit=True,
+    )
+    outcome = await executor.execute(_llm_action())
+
+    assert isinstance(outcome, Denied)
+    assert calls == 0
+    assert [event.kind for event in await journal.query()] == [
+        "action_requested",
+        "action_denied",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_executor_llm_escalation_binds_one_time_approval_to_action() -> None:
+    calls = 0
+
+    async def provider(request: LLMRequest) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {
+            "choices": [{"message": {"content": "approved result"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+        }
+
+    store = InMemoryApprovalStore()
+    journal = InMemoryAuditJournal()
+    policy = PolicyEngine(
+        rules=[
+            PolicyRule(
+                name="escalate_llm",
+                decision=PolicyDecision.ESCALATE,
+                action_kinds=(ActionKind.LLM,),
+                predicate=lambda action, ctx: True,
+            )
+        ]
+    )
+    executor = GuardedExecutor(
+        journal=journal,
+        policy=policy,
+        llm_client=_llm_client(provider),
+        approval_store=store,
+        approver_keys={"alice": "secret"},
+        require_audit=True,
+    )
+    action = _llm_action()
+    pending = await executor.execute(action)
+    assert isinstance(pending, Pending)
+    approval_id = pending.gate_request.gate_id
+    assert calls == 0
+
+    approval = GateDecision(
+        gate_id=approval_id,
+        verdict=GateVerdict.APPROVE,
+        reason="reviewed",
+        decided_by="alice",
+    )
+    altered = _llm_action("different content")
+    mismatch = await executor.execute(altered, approval=approval)
+    assert isinstance(mismatch, Denied)
+    assert calls == 0
+
+    resumed = await executor.execute(action, approval=approval)
+    assert isinstance(resumed, Allowed)
+    assert calls == 1
+
+    replay = await executor.execute(action, approval=approval)
+    assert isinstance(replay, Denied)
+    assert "replayed" in replay.reason.lower()
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_demo_graph_llm_draft_uses_executor_only() -> None:
+    from langgraph.checkpoint.memory import MemorySaver
+
+    calls = 0
+
+    async def provider(request: LLMRequest) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return {
+            "choices": [
+                {"message": {"content": "System health is operational."}}
+            ],
+            "usage": {"prompt_tokens": 20, "completion_tokens": 5, "total_tokens": 25},
+        }
+
+    executor = GuardedExecutor(
+        journal=InMemoryAuditJournal(),
+        policy=PolicyEngine(
+            rules=[
+                PolicyRule(
+                    name="allow_demo_llm",
+                    decision=PolicyDecision.ALLOW,
+                    action_kinds=(ActionKind.LLM,),
+                    predicate=lambda action, ctx: True,
+                )
+            ]
+        ),
+        llm_client=_llm_client(provider),
+    )
+    graph = build_demo_graph(checkpointer=MemorySaver(), executor=executor)
+    result = await graph.ainvoke(
+        {"messages": ["Weekly report ready"], "approved": False},
+        {"configurable": {"thread_id": "guarded-demo-thread"}},
+    )
+
+    assert calls == 1
+    assert any(
+        "Drafted email via guarded LLM" in message
+        for message in result["messages"]
+    )

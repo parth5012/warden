@@ -1,4 +1,4 @@
-"""Service logs reading tool for Warden governance.
+"""Service logs reading tool for Aegis governance.
 
 Enforces:
 - Service allowlisting

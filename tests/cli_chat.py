@@ -332,7 +332,7 @@ def main() -> None:
     if callable(reconfigure):
         reconfigure(encoding="utf-8")
 
-    parser = argparse.ArgumentParser(description="Warden CLI chat harness")
+    parser = argparse.ArgumentParser(description="Aegis CLI chat harness")
     parser.add_argument(
         "--pg",
         default=None,

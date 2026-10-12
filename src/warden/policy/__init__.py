@@ -1,4 +1,4 @@
-"""Policy package for Warden governance."""
+"""Policy package for Aegis governance."""
 
 from warden.policy.engine import (
     PolicyDecision,

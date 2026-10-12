@@ -1,4 +1,4 @@
-# Warden — Development Guide
+# Aegis — Development Guide
 
 > Environment setup, coding conventions, branch workflow, and troubleshooting.
 > For exact installation commands, see [`LOCAL_SETUP.md`](LOCAL_SETUP.md).

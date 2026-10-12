@@ -1,11 +1,10 @@
-"""Warden configuration and environment settings."""
+"""Aegis configuration and environment settings."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,9 +19,6 @@ def ensure_windows_event_loop() -> None:
 
 
 ensure_windows_event_loop()
-
-if TYPE_CHECKING:
-    from langchain_openai import ChatOpenAI
 
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_ROOT = _CURRENT_DIR.parent.parent
@@ -98,18 +94,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
-def get_groq_llm(model: str | None = None) -> ChatOpenAI | None:
-    """Return configured Groq ChatOpenAI client if groq_api_key is available."""
-    if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value():
-        return None
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        model=model or settings.groq_model,
-        api_key=settings.groq_api_key,
-        base_url="https://api.groq.com/openai/v1",
-        temperature=0.0,
-        timeout=10.0,
-    )

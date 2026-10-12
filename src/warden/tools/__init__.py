@@ -1,4 +1,4 @@
-"""Operational tools package for Warden governance."""
+"""Operational tools package for Aegis governance."""
 
 from warden.tools.database import (
     MutationResult,

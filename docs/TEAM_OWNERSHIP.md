@@ -1,4 +1,4 @@
-# Warden — Team Ownership
+# Aegis — Team Ownership
 
 > Workstream boundaries, parallel development rules, and integration responsibilities.
 > Use this document to decide who owns what before writing a single line of code.
