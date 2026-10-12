@@ -1,7 +1,7 @@
 # Grant-03: GrantsStore protocol + in-memory adapter
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: none (frontier) · Claim: _unclaimed_
+Blocked by: none (frontier) · Claim: `@me`
 
 ## Question
 
@@ -16,8 +16,8 @@ Build the grant storage seam (protocol + in-memory adapter + matching logic) tha
 
 ## Done when
 
-- [ ] Protocol + adapter + lifecycle + matching implemented and unit-tested.
-- [ ] `uv run pytest tests/test_grants.py -q` green; mypy strict clean on new files.
+- [x] Protocol + adapter + lifecycle + matching implemented and unit-tested.
+- [x] `uv run pytest tests/test_grants.py -q` green; mypy strict clean on new files.
 
 ## Context pointers
 
@@ -26,4 +26,4 @@ Build the grant storage seam (protocol + in-memory adapter + matching logic) tha
 
 ## Resolution
 
-_unresolved — agent: append file paths + test count + verification output, then mark boxes._
+Implemented `src/warden/grants.py` defining `GrantStatus`, `ScopeRule`, `Grant`, `GrantsStore` protocol, and `InMemoryGrantsStore` adapter with clock injection, exact-plus-prefix matching, atomic consume transitions, and lazy expiry updates. Added unit tests in `tests/test_grants.py` covering matching matrix, expiry boundary, exhaustion, revocation, and corrupt/missing fail-closed behavior. All 288 tests pass (6 skipped); mypy strict clean (0 errors in 67 files).
