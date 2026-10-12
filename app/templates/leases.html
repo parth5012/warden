@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Ephemeral Leases — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">Ephemeral Capability Leases</h1>
+            <span class="storage-mode-pill live" title="Zero ambient authority: All sensitive privileges are granted via time-decaying tokens">
+                <span class="mode-dot"></span> ZERO-AMBIENT AUTHORITY
+            </span>
+            <span class="storage-mode-pill demo" title="Automatic revocation upon TTL expiration or operation limit reached">
+                <span class="mode-dot"></span> CRYPTOGRAPHIC TTL
+            </span>
+        </div>
+        <p class="page-subtitle">
+            Time-bound, cryptographically signed capability tokens providing bounded temporary privilege elevation to AI agents.
+        </p>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="audit-header-actions">
+        <button
+            class="btn-icon-toggle audit-btn"
+            hx-get="/leases"
+            hx-target="#leases-table-container"
+            hx-swap="innerHTML"
+            title="Refresh leases catalog"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+        </button>
+
+        <button
+            class="btn-icon-toggle audit-btn"
+            style="background: rgba(6, 182, 212, 0.15); color: var(--color-cyan); border-color: rgba(6, 182, 212, 0.4);"
+            onclick="document.getElementById('issue-lease-modal').showModal();"
+            title="Grant an agent a temporary elevation lease"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Issue New Lease
+        </button>
+    </div>
+</div>
+
+<!-- KPI Metrics Grid -->
+<div class="audit-kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TOTAL LEASES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.total }}</div>
+        <div class="kpi-caption">Issued capability grants</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">ACTIVE LEASES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-emerald);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-emerald);">{{ metrics.active_count }}</div>
+        <div class="kpi-caption">Currently valid on seam</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">EXPIRED TOKENS</span>
+            <div class="kpi-icon-wrap" style="color: var(--text-muted);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--text-muted);">{{ metrics.expired_count }}</div>
+        <div class="kpi-caption">Naturally timed out</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">MANUALLY REVOKED</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-ruby);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-ruby);">{{ metrics.revoked_count }}</div>
+        <div class="kpi-caption">Operator emergency cutoffs</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">AUTHORIZED OPS DISPATCHED</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-amber);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-amber);">{{ metrics.total_ops_used }}</div>
+        <div class="kpi-caption">Tool calls executed</div>
+    </div>
+</div>
+
+<!-- Filter Controls Bar -->
+<div class="audit-filter-panel">
+    <form
+        id="leases-filter-form"
+        class="filter-row"
+        hx-get="/leases"
+        hx-target="#leases-table-container"
+        hx-swap="innerHTML"
+        hx-trigger="change, keyup delay:300ms from:#lease-search-input"
+    >
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Lease Status</label>
+            <select name="status" class="filter-select">
+                <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All Statuses</option>
+                <option value="ACTIVE" {% if selected_status == 'ACTIVE' %}selected{% endif %}>Active Only</option>
+                <option value="EXPIRED" {% if selected_status == 'EXPIRED' %}selected{% endif %}>Expired Only</option>
+                <option value="REVOKED" {% if selected_status == 'REVOKED' %}selected{% endif %}>Revoked Only</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Agent Principal</label>
+            <select name="agent" class="filter-select">
+                <option value="all" {% if selected_agent == 'all' %}selected{% endif %}>All Agents</option>
+                <option value="DBAgent" {% if selected_agent == 'DBAgent' %}selected{% endif %}>DBAgent</option>
+                <option value="CodeAgent" {% if selected_agent == 'CodeAgent' %}selected{% endif %}>CodeAgent</option>
+                <option value="KubeAgent" {% if selected_agent == 'KubeAgent' %}selected{% endif %}>KubeAgent</option>
+                <option value="OpsAssistant" {% if selected_agent == 'OpsAssistant' %}selected{% endif %}>OpsAssistant</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group" style="flex: 2; min-width: 240px;">
+            <label class="filter-label">Search Leases</label>
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input
+                id="lease-search-input"
+                type="text"
+                name="q"
+                class="filter-input search-input"
+                placeholder="Search by Lease ID, agent, scope, or justification..."
+                value="{{ q }}"
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="filter-actions">
+            <a href="/leases" class="btn-clear-filters">Clear Filters</a>
+        </div>
+    </form>
+</div>
+
+<!-- Leases Table Container -->
+<div id="leases-table-container">
+    {% include "components/leases_table_fragment.html" %}
+</div>
+
+<!-- Modal: Issue New Lease -->
+<dialog id="issue-lease-modal" style="background: var(--bg-surface, #121824); border: 1px solid var(--border-color, #1e293b); border-radius: 8px; color: var(--text-primary); max-width: 520px; width: 90%; padding: 1.5rem; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <h3 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            Issue Ephemeral Lease
+        </h3>
+        <button onclick="document.getElementById('issue-lease-modal').close();" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem;">✕</button>
+    </div>
+
+    <form
+        hx-post="/leases"
+        hx-target="#leases-table-container"
+        hx-swap="outerHTML"
+        onsubmit="document.getElementById('issue-lease-modal').close();"
+        style="display: flex; flex-direction: column; gap: 1rem;"
+    >
+        <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase;">Target Agent</label>
+            <select name="agent" class="tactical-select" style="width: 100%;">
+                <option value="DBAgent">DBAgent (Database Admin)</option>
+                <option value="CodeAgent">CodeAgent (Filesystem & Build)</option>
+                <option value="KubeAgent">KubeAgent (Cluster Diagnostics)</option>
+                <option value="OpsAssistant">OpsAssistant (General Operations)</option>
+            </select>
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase;">Permission Scope</label>
+            <input type="text" name="scope" class="tactical-input" placeholder="e.g. db:ddl_admin, fs:write_restricted, k8s:exec" required style="width: 100%;">
+        </div>
+
+        <div style="display: flex; gap: 1rem;">
+            <div style="flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase;">TTL Duration (Minutes)</label>
+                <input type="number" name="ttl_minutes" class="tactical-input" value="30" min="5" max="240" required style="width: 100%;">
+            </div>
+            <div style="flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase;">Max Operations Budget</label>
+                <input type="number" name="max_operations" class="tactical-input" value="5" min="1" max="50" required style="width: 100%;">
+            </div>
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; text-transform: uppercase;">Business Justification</label>
+            <textarea name="justification" class="tactical-input" rows="3" placeholder="State operational reason or ticket reference..." required style="width: 100%;"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.65rem; margin-top: 0.5rem;">
+            <button type="button" onclick="document.getElementById('issue-lease-modal').close();" class="btn-tactical btn-clear">Cancel</button>
+            <button type="submit" class="btn-tactical" style="background: var(--color-cyan); color: #000; font-weight: 700;">Sign & Issue Lease</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Architecture Callout -->
+<div class="policy-footer-note" style="margin-top: 2rem; padding: 1.25rem; background: var(--bg-surface-elevated, #161c28); border-radius: 8px; border: 1px solid var(--border-color, #222d3d);">
+    <div style="display: flex; gap: 1rem; align-items: flex-start;">
+        <div style="color: var(--color-amber); padding-top: 0.2rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        </div>
+        <div>
+            <h4 style="margin: 0 0 0.35rem 0; font-size: 0.92rem; color: var(--text-primary); font-family: var(--font-sans);">
+                Zero-Ambient-Authority Capability Model
+            </h4>
+            <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55;">
+                In the Aegis security architecture, agents possess no persistent elevated permissions. Operations requiring escalated access (e.g. database schema changes, restricted filesystem writes) require an explicit, time-decaying Ephemeral Lease.<br>
+                When a lease expires or its operations budget is exhausted, the GuardedExecutor seam automatically returns a terminal <code>DENY</code> or halts with a <code>gate_requested</code> interrupt.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

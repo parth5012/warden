@@ -1,6 +1,6 @@
-# Warden — API Contract
+# Aegis — API Contract
 
-> Documents all HTTP interfaces for the Warden FastAPI application.
+> Documents all HTTP interfaces for the Aegis FastAPI application.
 > Existing routes vs. proposed routes are clearly labelled.
 > The UI uses Jinja + HTMX, server-rendered. All API routes return JSON. (Lock 12)
 
@@ -465,7 +465,7 @@ If the governance infrastructure is unavailable, the API returns `503` and **doe
 
 ## 9. Versioning and Compatibility
 
-- API version is embedded in the `X-Warden-Version` response header.
+- API version is embedded in the `X-Aegis-Version` response header.
 - Routes are unversioned in the URL path for the MVP.
 - Breaking changes require a new path prefix (`/v2/...`) and a deprecation notice period.
 - The JSON shape of every response must remain backwards-compatible within a major version.

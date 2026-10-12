@@ -1,0 +1,97 @@
+<div id="sandbox-table-container">
+    {% if runs and runs|length > 0 %}
+    <div class="tactical-table-wrapper">
+        <table class="tactical-table sandbox-table">
+            <thead>
+                <tr>
+                    <th style="width: 150px;">RUN & ACTION ID</th>
+                    <th style="width: 140px;">AGENT & TOOL</th>
+                    <th>TARGET COMMAND / PAYLOAD</th>
+                    <th style="width: 180px;">ISOLATION ADAPTER</th>
+                    <th style="width: 160px;">RESOURCES</th>
+                    <th style="width: 130px;">EXIT & SECRETS</th>
+                    <th style="width: 100px; text-align: right;">OUTPUT</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr class="sandbox-row" id="row-{{ run.id }}">
+                    <td>
+                        <div class="policy-id-block">
+                            <span class="font-mono text-cyan" style="font-weight: 700; font-size: 0.82rem;">{{ run.id }}</span>
+                            <span class="version-tag font-mono">Action: {{ run.action_id }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span style="font-weight: 600; color: var(--text-primary);">{{ run.agent }}</span>
+                            <span class="font-mono text-cyan" style="font-size: 0.72rem;">
+                                {{ run.tool_name }}()
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <code style="font-family: var(--font-mono); font-size: 0.76rem; background: rgba(0,0,0,0.35); padding: 0.2rem 0.45rem; border-radius: 4px; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.08); word-break: break-all;">
+                                {{ run.command }}
+                            </code>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="sandbox-adapter-tag">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                            <span>{{ run.adapter_short }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="resource-stat-group">
+                            <div class="stat-item"><span>{{ run.duration_ms }}</span>ms</div>
+                            <div class="stat-item"><span>{{ run.cpu_ms }}</span>ms cpu</div>
+                            <div class="stat-item"><span>{{ run.peak_memory_mb }}</span>MB</div>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            {% if run.exit_code == 0 %}
+                                <span class="exit-code-badge exit-code-0">EXIT 0 (OK)</span>
+                            {% elif run.exit_code == 124 %}
+                                <span class="exit-code-badge exit-code-timeout">TIMEOUT (124)</span>
+                            {% else %}
+                                <span class="exit-code-badge exit-code-err">EXIT {{ run.exit_code }} (ERR)</span>
+                            {% endif %}
+                            <span style="font-size: 0.68rem; color: #a855f7; font-family: var(--font-mono);">
+                                🛡 {{ run.scrubbed_secrets_count }} secrets scrubbed
+                            </span>
+                        </div>
+                    </td>
+                    <td style="text-align: right;">
+                        <button
+                            class="btn-icon-toggle audit-btn"
+                            style="font-size: 0.72rem; padding: 0.25rem 0.55rem;"
+                            hx-get="/sandbox/{{ run.id }}/logs"
+                            hx-target="#sandbox-modal-body"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('sandbox-log-modal').showModal();"
+                            title="Inspect stdout and stderr terminal logs"
+                        >
+                            Logs
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="tactical-empty-state">
+        <div class="empty-icon-wrap">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        </div>
+        <h3 class="empty-title">No Sandbox Runs Found</h3>
+        <p class="empty-subtitle">No isolated tool execution records match the selected filter criteria.</p>
+        <button class="btn-tactical btn-reset" hx-get="/sandbox" hx-target="#sandbox-table-container" hx-swap="innerHTML">
+            Reset Filters
+        </button>
+    </div>
+    {% endif %}
+</div>

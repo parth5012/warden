@@ -1,4 +1,4 @@
-"""Database tools for Warden governance.
+"""Database tools for Aegis governance.
 
 Includes:
 - query_db_readonly: Validates SQL via sqlglot, enforces SELECT-only construct,

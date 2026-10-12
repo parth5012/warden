@@ -1,5 +1,5 @@
 /**
- * Warden Cybersecurity Console — Interactive Client Engine v2.0
+ * Aegis Cybersecurity Console — Interactive Client Engine v2.0
  * Powers:
  * - Theme Persistence (Obsidian Dark / Clean Enterprise Light)
  * - Approvals Queue Interactive Risk Filtering (All / Critical / High / Medium)

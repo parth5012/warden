@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Sandbox Runs — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">Sandbox Execution Runs</h1>
+            <span class="storage-mode-pill live" title="Isolated execution environment owned by Gourav via SandboxPort interface">
+                <span class="mode-dot"></span> SANDBOXPORT (CGROUPS V2)
+            </span>
+            <span class="storage-mode-pill demo" title="Strict sanitization of parent process environment variables">
+                <span class="mode-dot"></span> ZERO-ENV LEAK
+            </span>
+        </div>
+        <p class="page-subtitle">
+            Telemetry, resource utilization, and containment logs for tool executions dispatched across isolated execution adapters.
+        </p>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="audit-header-actions">
+        <button
+            class="btn-icon-toggle audit-btn"
+            hx-get="/sandbox"
+            hx-include="#sandbox-filter-form"
+            hx-target="#sandbox-table-container"
+            hx-swap="innerHTML"
+            title="Refresh sandbox runs"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- KPI Metrics Grid -->
+<div class="audit-kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TOTAL DISPATCHES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.total_runs }}</div>
+        <div class="kpi-caption">Sandbox executions</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">CLEAN EXITS (0)</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-emerald);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-emerald);">{{ metrics.success_count }}</div>
+        <div class="kpi-caption">Zero-fault completions</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">EXECUTION FAILURES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-ruby);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-ruby);">{{ metrics.failed_count }}</div>
+        <div class="kpi-caption">Non-zero exit or blocked</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">SECRETS SANITIZED</span>
+            <div class="kpi-icon-wrap" style="color: #a855f7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: #c084fc;">{{ metrics.total_secrets_scrubbed }}</div>
+        <div class="kpi-caption">Env variables masked</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">MEAN LATENCY</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-amber);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-amber);">{{ metrics.avg_duration }} ms</div>
+        <div class="kpi-caption">Average tool execution</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">PEAK MEMORY</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.peak_memory_max }} MB</div>
+        <div class="kpi-caption">Max resident set size</div>
+    </div>
+</div>
+
+<!-- Filter Controls Bar -->
+<div class="audit-filter-panel">
+    <form
+        id="sandbox-filter-form"
+        class="filter-row"
+        hx-get="/sandbox"
+        hx-target="#sandbox-table-container"
+        hx-swap="innerHTML"
+        hx-trigger="change, keyup delay:300ms from:#sandbox-search-input"
+    >
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Status Filter</label>
+            <select name="status" class="filter-select">
+                <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All Results</option>
+                <option value="SUCCESS" {% if selected_status == 'SUCCESS' %}selected{% endif %}>Success (Exit 0)</option>
+                <option value="FAILED" {% if selected_status == 'FAILED' %}selected{% endif %}>Failed (Non-zero)</option>
+                <option value="TIMEOUT" {% if selected_status == 'TIMEOUT' %}selected{% endif %}>Timeout (124)</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Tool Function</label>
+            <select name="tool" class="filter-select">
+                <option value="all" {% if selected_tool == 'all' %}selected{% endif %}>All Tools</option>
+                <option value="sql_query" {% if selected_tool == 'sql_query' %}selected{% endif %}>sql_query()</option>
+                <option value="run_shell" {% if selected_tool == 'run_shell' %}selected{% endif %}>run_shell()</option>
+                <option value="run_code" {% if selected_tool == 'run_code' %}selected{% endif %}>run_code()</option>
+                <option value="write_file" {% if selected_tool == 'write_file' %}selected{% endif %}>write_file()</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group" style="flex: 2; min-width: 240px;">
+            <label class="filter-label">Search Runs</label>
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input
+                id="sandbox-search-input"
+                type="text"
+                name="q"
+                class="filter-input search-input"
+                placeholder="Search by Run ID, tool, command payload, or adapter..."
+                value="{{ q }}"
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="filter-actions">
+            <a href="/sandbox" class="btn-clear-filters">Clear Filters</a>
+        </div>
+    </form>
+</div>
+
+<!-- Table Container -->
+<div id="sandbox-table-container">
+    {% include "components/sandbox_table_fragment.html" %}
+</div>
+
+<!-- Modal: Sandbox Terminal Output Log -->
+<dialog id="sandbox-log-modal" style="background: var(--bg-surface, #121824); border: 1px solid var(--border-color, #1e293b); border-radius: 8px; color: var(--text-primary); max-width: 720px; width: 90%; padding: 1.5rem; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <h3 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            Sandbox Output Log & Process Terminal
+        </h3>
+        <button onclick="document.getElementById('sandbox-log-modal').close();" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem;">✕</button>
+    </div>
+
+    <div id="sandbox-modal-body">
+        <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Loading terminal logs...
+        </div>
+    </div>
+</dialog>
+
+<!-- Architecture Callout -->
+<div class="policy-footer-note" style="margin-top: 2rem; padding: 1.25rem; background: var(--bg-surface-elevated, #161c28); border-radius: 8px; border: 1px solid var(--border-color, #222d3d);">
+    <div style="display: flex; gap: 1rem; align-items: flex-start;">
+        <div style="color: var(--color-cyan); padding-top: 0.2rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        </div>
+        <div>
+            <h4 style="margin: 0 0 0.35rem 0; font-size: 0.92rem; color: var(--text-primary); font-family: var(--font-sans);">
+                SandboxPort Isolation Architecture (Gourav's Component)
+            </h4>
+            <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55;">
+                Per <code>INTEGRATION_GUIDE.md</code>, tool execution is strictly isolated via the <code>SandboxPort</code> interface.<br>
+                High-risk actions (<code>run_shell</code>, <code>run_code</code>) run inside ephemeral subprocesses bounded by Linux cgroups v2 resource quotas or isolated Docker containers with non-root UID 1000.<br>
+                All sensitive environment variables (API credentials, connection strings) are sanitized prior to execution fork to prevent unauthorized extraction.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

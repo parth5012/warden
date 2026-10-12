@@ -14,6 +14,7 @@ import operator
 from typing import TYPE_CHECKING, Any, Literal
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, interrupt
@@ -32,8 +33,6 @@ from warden.models import (
 if TYPE_CHECKING:
     from warden.executor import GuardedExecutor
 
-from warden.config import get_groq_llm
-
 logger = logging.getLogger("warden.demo_graph")
 
 
@@ -43,26 +42,6 @@ class DemoState(TypedDict):
 
 
 def draft_node(state: DemoState) -> dict[str, Any]:
-    llm = get_groq_llm()
-    if llm is not None:
-        try:
-            user_prompt = (
-                state["messages"][-1]
-                if state.get("messages")
-                else "Weekly ops report ready"
-            )
-            prompt = (
-                f"Draft a concise one-sentence ops email subject and preview for: {user_prompt}"
-            )
-            response = llm.invoke(prompt)
-            content = str(response.content).strip().replace("\n", " ")
-            return {
-                "messages": [
-                    f"Drafted email via Groq: '{content}' for team@example.com"
-                ]
-            }
-        except Exception as exc:
-            logger.warning("Groq draft generation failed, falling back to deterministic draft: %s", exc)
     return {"messages": ["Drafted email: 'Weekly report ready' for team@example.com"]}
 
 
@@ -98,6 +77,62 @@ def build_demo_graph(
 
     Returns a compiled graph ready to invoke/ainvoke with a thread_id.
     """
+    async def guarded_draft_node(
+        state: DemoState, config: RunnableConfig
+    ) -> dict[str, Any]:
+        if executor is None:
+            return draft_node(state)
+
+        user_prompt = (
+            state["messages"][-1]
+            if state.get("messages")
+            else "Weekly ops report ready"
+        )
+        prompt = (
+            "Draft a concise one-sentence ops email subject and preview for: "
+            f"{user_prompt}"
+        )
+        configurable = config.get("configurable", {})
+        thread_id = str(configurable.get("thread_id") or "demo-thread")
+        action = Action(
+            id=f"{thread_id}:llm-draft",
+            kind=ActionKind.LLM,
+            name="gpt-4o",
+            payload={
+                "model": "gpt-4o",
+                "provider": "openai",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 128,
+            },
+            run_id=f"demo-run:{thread_id}",
+            thread_id=thread_id,
+        )
+        from warden.executor import ExecutionContext
+
+        outcome = await executor.execute(
+            action,
+            ctx=ExecutionContext(
+                run_id=action.run_id,
+                thread_id=thread_id,
+                metadata={"agent": "demo_graph"},
+            ),
+        )
+        if isinstance(outcome, Allowed):
+            content = getattr(outcome.result, "result", None)
+            if isinstance(content, str) and content.strip():
+                return {
+                    "messages": [
+                        "Drafted email via guarded LLM: "
+                        f"'{content.strip().replace(chr(10), ' ')}' for team@example.com"
+                    ]
+                }
+        else:
+            logger.warning(
+                "Guarded LLM draft did not execute (outcome=%s)",
+                outcome.kind.value,
+            )
+        return draft_node(state)
+
     async def send_node(state: DemoState) -> dict[str, Any]:
         if executor is not None:
             action = Action(
@@ -126,7 +161,7 @@ def build_demo_graph(
         return {"messages": ["Email sent to team@example.com."]}
 
     builder = StateGraph(DemoState)
-    builder.add_node("draft", draft_node)
+    builder.add_node("draft", guarded_draft_node)
     builder.add_node("approval", approval_node)
     builder.add_node("send", send_node)
     builder.add_node("abort", abort_node)

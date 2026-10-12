@@ -1,0 +1,85 @@
+<div class="sandbox-logs-container" style="display: flex; flex-direction: column; gap: 1.25rem;">
+    <!-- Overview Header -->
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                <span class="font-mono text-cyan" style="font-size: 1.1rem; font-weight: 700;">{{ run.id }}</span>
+                {% if run.exit_code == 0 %}
+                    <span class="exit-code-badge exit-code-0">EXIT 0 (SUCCESS)</span>
+                {% else %}
+                    <span class="exit-code-badge exit-code-err">EXIT {{ run.exit_code }} (FAILURE)</span>
+                {% endif %}
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+                Action ID: <span style="color: var(--text-primary);">{{ run.action_id }}</span> ·
+                Agent: <span style="color: var(--text-primary);">{{ run.agent }}</span> ·
+                Adapter: <span style="color: var(--text-primary);">{{ run.adapter }}</span>
+            </div>
+        </div>
+        <div style="text-align: right; font-family: var(--font-mono); font-size: 0.75rem;">
+            <div style="color: var(--text-primary); font-weight: 600;">{{ run.duration_ms }} ms duration</div>
+            <div style="color: var(--text-muted);">{{ run.cpu_ms }} ms CPU · {{ run.peak_memory_mb }} MB RAM</div>
+        </div>
+    </div>
+
+    <!-- Environment Sanitization Report -->
+    <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 6px; padding: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span style="font-size: 0.75rem; font-weight: 700; color: #c084fc; text-transform: uppercase;">
+                Environment Variable Sanitization (Zero-Leak Policy)
+            </span>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45;">
+            {{ run.scrubbed_secrets_count }} sensitive environment variables automatically scrubbed before process fork:
+            <div style="display: flex; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap;">
+                {% for secret in run.scrubbed_secrets %}
+                    <span style="background: rgba(0,0,0,0.3); border: 1px solid rgba(168, 85, 247, 0.4); color: #e9d5ff; font-family: var(--font-mono); font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 3px;">
+                        {{ secret }}=[REDACTED]
+                    </span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Stdout Terminal -->
+    <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+            <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 0;">
+                Isolated Process Standard Output (stdout)
+            </h4>
+        </div>
+        <div class="terminal-window">
+            <div class="terminal-header">
+                <div class="terminal-title">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    <span>sandbox_stdout_{{ run.id }}.log</span>
+                </div>
+                <div class="terminal-dots">
+                    <span class="term-dot red"></span>
+                    <span class="term-dot yellow"></span>
+                    <span class="term-dot green"></span>
+                </div>
+            </div>
+            <pre class="terminal-body" style="margin: 0;">{% if run.stdout %}{{ run.stdout }}{% else %}<span class="log-dim">[No stdout generated]</span>{% endif %}</pre>
+        </div>
+    </div>
+
+    <!-- Stderr Terminal (if any) -->
+    {% if run.stderr %}
+    <div>
+        <h4 style="font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: #f87171; margin: 0 0 0.45rem 0;">
+            Process Standard Error (stderr)
+        </h4>
+        <div class="terminal-window" style="border-color: rgba(239, 68, 68, 0.4);">
+            <div class="terminal-header" style="background: rgba(239, 68, 68, 0.1);">
+                <div class="terminal-title" style="color: #f87171;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <span>sandbox_stderr_{{ run.id }}.log</span>
+                </div>
+            </div>
+            <pre class="terminal-body log-err" style="margin: 0;">{{ run.stderr }}</pre>
+        </div>
+    </div>
+    {% endif %}
+</div>

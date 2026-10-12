@@ -1,4 +1,4 @@
-# Warden — Integration Guide
+# Aegis — Integration Guide
 
 > Component dependencies, producer/consumer relationships, integration order, and mock interfaces for modules not yet implemented.
 

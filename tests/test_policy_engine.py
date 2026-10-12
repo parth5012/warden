@@ -1,4 +1,4 @@
-"""Focused tests for PolicyEngine in Warden.
+"""Focused tests for PolicyEngine in Aegis.
 
 Covers all requirements from Phase 1, Step 1:
 1. Valid ALLOW decision.

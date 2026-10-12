@@ -1,0 +1,122 @@
+<div id="leases-table-container">
+    {% if leases and leases|length > 0 %}
+    <div class="tactical-table-wrapper">
+        <table class="tactical-table leases-table">
+            <thead>
+                <tr>
+                    <th style="width: 130px;">LEASE ID</th>
+                    <th style="width: 170px;">AGENT PRINCIPAL</th>
+                    <th>GRANTED SCOPE & JUSTIFICATION</th>
+                    <th style="width: 190px;">TTL COUNTDOWN</th>
+                    <th style="width: 130px;">OPS BUDGET</th>
+                    <th style="width: 120px;">STATUS</th>
+                    <th style="width: 110px; text-align: right;">ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lease in leases %}
+                <tr class="lease-row status-{{ lease.status|lower }}" id="row-{{ lease.id }}">
+                    <td>
+                        <div class="policy-id-block">
+                            <span class="font-mono text-cyan" style="font-weight: 700; font-size: 0.85rem;">{{ lease.id }}</span>
+                            <span class="version-tag font-mono" title="HMAC cryptographic token signature">{{ lease.hmac_token[:14] }}…</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span style="font-weight: 600; color: var(--text-primary);">{{ lease.agent }}</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
+                                {{ lease.agent_model }}
+                            </span>
+                            <span style="font-size: 0.68rem; color: #64748b;">By: {{ lease.granted_by }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                <span class="lease-scope-badge">
+                                    {{ lease.scope }}
+                                </span>
+                                {% if lease.risk_tier == 'Critical' %}
+                                    <span class="badge-risk-critical">CRITICAL</span>
+                                {% elif lease.risk_tier == 'High' %}
+                                    <span class="badge-risk-high">HIGH</span>
+                                {% else %}
+                                    <span class="badge-risk-med">ELEVATED</span>
+                                {% endif %}
+                            </div>
+                            <div style="font-size: 0.78rem; color: var(--text-secondary);">
+                                {{ lease.justification }}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="ttl-meter-wrap">
+                            <div class="ttl-time-text">
+                                <span style="font-weight: 600; color: {% if lease.status == 'ACTIVE' %}var(--text-primary){% elif lease.status == 'REVOKED' %}#f87171{% else %}#94a3b8{% endif %};">
+                                    {{ lease.time_display }}
+                                </span>
+                                <span style="color: var(--text-muted); font-size: 0.68rem;">{{ lease.ttl_minutes }}m max</span>
+                            </div>
+                            <div class="ttl-meter-bar">
+                                <div class="ttl-meter-fill {{ lease.meter_color }}" style="width: {{ lease.pct_left }}%;"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span class="font-mono" style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">
+                                {{ lease.operations_used }} / {{ lease.max_operations }}
+                            </span>
+                            <span style="font-size: 0.68rem; color: var(--text-muted);">calls authorized</span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if lease.status == 'ACTIVE' %}
+                            <span class="lease-status-pill lease-status-active">
+                                <span class="pill-dot"></span> ACTIVE
+                            </span>
+                        {% elif lease.status == 'REVOKED' %}
+                            <span class="lease-status-pill lease-status-revoked">
+                                <span class="pill-dot"></span> REVOKED
+                            </span>
+                        {% else %}
+                            <span class="lease-status-pill lease-status-expired">
+                                <span class="pill-dot"></span> EXPIRED
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if lease.status == 'ACTIVE' %}
+                            <button
+                                class="btn-revoke-lease"
+                                hx-post="/leases/{{ lease.id }}/revoke"
+                                hx-target="#leases-table-container"
+                                hx-swap="outerHTML"
+                                hx-confirm="Are you sure you want to immediately revoke lease {{ lease.id }}? All pending operations will be aborted."
+                                title="Instantly revoke ephemeral permissions"
+                            >
+                                ✕ Revoke
+                            </button>
+                        {% else %}
+                            <span style="color: var(--text-muted); font-size: 0.72rem; font-family: var(--font-mono);">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="tactical-empty-state">
+        <div class="empty-icon-wrap">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </div>
+        <h3 class="empty-title">No Ephemeral Leases Found</h3>
+        <p class="empty-subtitle">No capability grants match the current filter or search criteria.</p>
+        <button class="btn-tactical btn-reset" hx-get="/leases" hx-target="#leases-table-container" hx-swap="innerHTML">
+            Reset Filters
+        </button>
+    </div>
+    {% endif %}
+</div>

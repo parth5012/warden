@@ -1,4 +1,4 @@
-# STATUS.md — Warden: What's Built
+# STATUS.md — Aegis: What's Built
 
 > Last updated: 2026-10-11
 
@@ -112,7 +112,7 @@ Reusable interactive CLI for any compiled LangGraph graph:
 | 8 | Approver identity = named keys in env |
 | 9 | Policies live in DB (`policy_versions` append-only) |
 | 10 | Single ops-assistant agent first, then expand |
-| 11 | Product name = **Warden** |
+| 11 | Product name = **Aegis** |
 | 12 | UI = Jinja + HTMX, server-rendered in FastAPI, JSON-clean endpoints |
 
 ---

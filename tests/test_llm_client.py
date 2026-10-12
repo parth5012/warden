@@ -1,4 +1,4 @@
-"""Comprehensive test suite for Guarded LLM Client in Warden.
+"""Comprehensive test suite for Guarded LLM Client in Aegis.
 
 Tests cover:
 - Provider usage extraction and normalization across OpenAI, Anthropic, Gemini
@@ -48,10 +48,13 @@ from warden.llm import (
     TokenEstimator,
     TokenLimitExceededError,
     TokenUsageSource,
+    UnknownModelPricingError,
+    UnsupportedModelError,
     UsageExtractor,
     redact_secrets,
 )
 from warden.models import Action, ActionKind
+from warden.llm.providers import OpenAIProviderAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -848,11 +851,14 @@ async def test_postflight_usage_and_cost_settlement_less_than_reservation() -> N
 
 @pytest.mark.asyncio
 async def test_postflight_settlement_with_unknown_model_pricing() -> None:
-    """When model pricing is unknown, actual cost is None and reservation is cleanly released."""
+    """Unknown pricing must block provider dispatch rather than treating calls as free."""
     bm = BudgetManager()
     cfg = BudgetConfig(max_spend_per_run=Decimal("5.00"))
+    provider_calls = 0
 
     async def mock_provider(req: LLMRequest) -> dict[str, Any]:
+        nonlocal provider_calls
+        provider_calls += 1
         return {
             "id": "custom-resp-01",
             "choices": [{"message": {"content": "ok"}}],
@@ -866,9 +872,9 @@ async def test_postflight_settlement_with_unknown_model_pricing() -> None:
     action = Action(
         id="act-unknown-pricing",
         kind=ActionKind.LLM,
-        name="unmapped-local-model",
+        name="gpt-4o",
         payload={
-            "model": "unmapped-local-model",
+            "model": "gpt-4o",
             "provider": "custom-host",
             "messages": [{"role": "user", "content": "hi"}],
         },
@@ -876,17 +882,133 @@ async def test_postflight_settlement_with_unknown_model_pricing() -> None:
         thread_id="th-unknown-p",
     )
 
-    result = await client.invoke(action, budget_config=cfg)
-
-    assert result.is_success is True
-    assert result.cost is None  # Never fabricated
-    assert result.usage.total_tokens == 300
+    with pytest.raises(UnknownModelPricingError):
+        await client.invoke(action, budget_config=cfg)
+    assert provider_calls == 0
 
     tracker = await bm.get_or_create_run_tracker("run-unknown-p", cfg)
     assert tracker is not None
     assert tracker.reserved_spend == Decimal("0")
     assert tracker.settled_spend == Decimal("0")
-    assert tracker.total_tokens == 300
+    assert tracker.total_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_unsupported_tokenizer_blocks_provider_before_reserving_budget() -> None:
+    budget = BudgetManager()
+    config = BudgetConfig(max_spend_per_run=Decimal("5"))
+    provider_calls = 0
+
+    async def provider(req: LLMRequest) -> dict[str, Any]:
+        nonlocal provider_calls
+        provider_calls += 1
+        return {}
+
+    client = GuardedLLMClient(provider_caller=provider, budget_manager=budget)
+    action = Action(
+        id="act-unknown-tokenizer",
+        kind=ActionKind.LLM,
+        name="gpt-4o",
+        payload={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "test"}],
+            "extra_params": {},
+        },
+        run_id="run-unknown-tokenizer",
+        thread_id="thread-unknown-tokenizer",
+    )
+    client.tokenizer = TokenEstimator(encoding_overrides={"gpt-4o": "missing_encoding"})
+
+    with pytest.raises(UnsupportedModelError):
+        await client.invoke(action, budget_config=config)
+
+    assert provider_calls == 0
+    tracker = await budget.get_or_create_run_tracker(
+        "run-unknown-tokenizer", config
+    )
+    assert tracker is not None
+    assert tracker.reserved_spend == Decimal("0")
+    assert tracker.settled_spend == Decimal("0")
+
+
+@pytest.mark.asyncio
+async def test_missing_provider_usage_settles_conservative_preflight_estimate() -> None:
+    budget = BudgetManager()
+    config = BudgetConfig(max_spend_per_run=Decimal("5"))
+
+    async def provider(req: LLMRequest) -> dict[str, Any]:
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+    client = GuardedLLMClient(provider_caller=provider, budget_manager=budget)
+    action = Action(
+        id="act-missing-usage",
+        kind=ActionKind.LLM,
+        name="gpt-4o",
+        payload={
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 100,
+        },
+        run_id="run-missing-usage",
+        thread_id="thread-missing-usage",
+    )
+
+    result = await client.invoke(action, budget_config=config)
+    tracker = await budget.get_or_create_run_tracker("run-missing-usage", config)
+    assert tracker is not None
+    assert result.usage.is_estimated
+    assert result.cost is not None
+    assert result.cost.estimated_cost is not None
+    assert tracker.reserved_spend == Decimal("0")
+    assert tracker.settled_spend == result.cost.estimated_cost
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_uses_modern_async_client_without_internal_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import openai
+
+    captured: dict[str, Any] = {}
+
+    class FakeCompletions:
+        async def create(self, **kwargs: Any) -> dict[str, Any]:
+            captured["request"] = kwargs
+            return {"id": "mock-openai-response"}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs: Any) -> None:
+            captured["client"] = kwargs
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            return None
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", FakeAsyncClient)
+    adapter = OpenAIProviderAdapter(
+        api_key="test-only-key",
+        base_url="https://api.example.invalid/v1",
+        request_timeout_s=10,
+    )
+    response = await adapter.invoke(
+        LLMRequest(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "hello"}],
+            max_tokens=12,
+            timeout_s=5,
+        )
+    )
+
+    assert response == {"id": "mock-openai-response"}
+    assert captured["client"]["api_key"] == "test-only-key"
+    assert captured["client"]["base_url"] == "https://api.example.invalid/v1"
+    assert captured["client"]["timeout"] == 5
+    assert captured["client"]["max_retries"] == 0
+    assert captured["request"]["model"] == "gpt-4o"
+    assert captured["request"]["max_tokens"] == 12
 
 
 @pytest.mark.asyncio
@@ -938,4 +1060,3 @@ async def test_postflight_extraction_from_sdk_like_object() -> None:
     assert result.usage.output_standard_tokens == 35   # 60 - 25
     assert result.cost is not None
     assert result.cost.calculated_cost is not None
-

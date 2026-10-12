@@ -130,8 +130,36 @@ class TokenEstimator:
 
         return None
 
+    def count_tokens(self, model: str, text: str) -> int:
+        """Count tokens in text for model, or return 0 when unavailable.
+
+        Unlike the old implementation, an unsupported model never maps to a
+        guessed count of zero: it is surfaced through the estimator result so
+        budget and spend policy can treat it as an unknown (and refuse to
+        proceed) instead of silently allowing the request.
+        """
+        res = self.estimate_text_tokens(text=text, model=model)
+        return res.estimated_tokens or 0
+
+    def estimate_tokens(self, text: str, model: str) -> TokenEstimationResult:
+        """Explicit, safe token estimation for raw text.
+
+        Returns an explicit ``TokenEstimationResult`` that distinguishes:
+        - supported + counted tokens
+        - unsupported (no compatible encoding) tokens -> estimated_tokens=None
+
+        This matters because a zero is never a valid stand-in for an unknown
+        token count: budget and spend limits must not be bypassed when the
+        estimator cannot say how many tokens a prompt contains.
+        """
+        return self.estimate_text_tokens(text=text, model=model)
+
     def estimate_text_tokens(self, text: str, model: str) -> TokenEstimationResult:
-        """Estimate token count for a raw string."""
+        """Estimate token count for a raw string.
+
+        Returns None for the token count when the model is unsupported.  A
+        request that cannot be token-counted is never treated as zero.
+        """
         encoder = self.get_encoding_for_model(model)
         if encoder is None:
             return TokenEstimationResult(

@@ -1,11 +1,15 @@
 """Tests for DockerSandbox adapter (docker run builder, timeout kill, fail-closed).
 
+Execution goes through ``warden.sandbox.docker._blocking_run`` (sync
+``subprocess.run`` offloaded via ``asyncio.to_thread``), so it never depends
+on the running event loop's subprocess support. Tests patch that seam.
+
 Validates:
 1. argv construction:
    - standard flags: --rm, --network=none, --read-only, --memory, --cpus, --tmpfs, --name
    - mount handling: -v workspace:/workspace:{ro|rw} for ro/rw, omitted for none
    - container name format: warden-<sanitized action.id>
-   - image placement after options
+   - image placement after options (registry pin or image_override)
    - exec mode appends argv list
    - shell mode appends ["sh", "-c", command]
 2. Protocol compliance: DockerSandbox satisfies SandboxPort.
@@ -14,9 +18,8 @@ Validates:
    - exec mode: missing argv, empty argv, invalid argv types
    - shell mode: missing command, empty command, whitespace command, invalid command types
 5. Timeout handling:
-   - when proc.communicate() times out, catches TimeoutError
-   - executes best-effort kill ["docker", "kill", name]
-   - executes best-effort rm ["docker", "rm", "-f", name]
+   - when _blocking_run raises subprocess.TimeoutExpired
+   - executes best-effort cleanup (_blocking_cleanup with container name)
    - returns SandboxResult(ok=False, exit_code=None, timed_out=True, ...)
 6. Truncation:
    - stdout/stderr > OUTPUT_CAP_BYTES (64 KiB) truncated to 64 KiB with "...[truncated]" marker
@@ -29,14 +32,16 @@ Validates:
 9. FileNotFoundError when spawning docker CLI raises SandboxUnavailable.
 10. Normal non-zero exit returns SandboxResult(ok=False, exit_code=1, timed_out=False, ...).
 11. Normal exit code 0 returns SandboxResult(ok=True, exit_code=0, timed_out=False, ...).
+12. image_override replaces the registry-pinned image in argv.
 """
 
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -46,36 +51,14 @@ from warden.sandbox.port import OUTPUT_CAP_BYTES, SandboxPort, SandboxResult, Sa
 from warden.sandbox.registry import ToolProfile
 
 
-class MockProcess:
-    """Mock asyncio subprocess for Docker command execution."""
-
-    def __init__(
-        self,
-        stdout: bytes = b"",
-        stderr: bytes = b"",
-        returncode: int = 0,
-        delay: float = 0.0,
-        communicate_exc: Exception | None = None,
-    ) -> None:
-        self._stdout = stdout
-        self._stderr = stderr
-        self.returncode = returncode
-        self._delay = delay
-        self._communicate_exc = communicate_exc
-        self.killed = False
-
-    async def communicate(self) -> tuple[bytes, bytes]:
-        if self._delay > 0:
-            await asyncio.sleep(self._delay)
-        if self._communicate_exc is not None:
-            raise self._communicate_exc
-        return self._stdout, self._stderr
-
-    def kill(self) -> None:
-        self.killed = True
-
-    async def wait(self) -> int:
-        return self.returncode
+def _completed(
+    stdout: bytes = b"",
+    stderr: bytes = b"",
+    returncode: int = 0,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.CompletedProcess(
+        args=["docker", "run"], returncode=returncode, stdout=stdout, stderr=stderr
+    )
 
 
 @pytest.fixture
@@ -135,13 +118,13 @@ async def test_argv_construction_exec_mode(
     sample_exec_profile: ToolProfile,
 ) -> None:
     """Validate argv flags, mounts, container name, and image order for exec mode."""
-    recorded_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    recorded: list[tuple[list[str], float]] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        recorded_calls.append((args, kwargs))
-        return MockProcess(stdout=b"file1.txt\n", stderr=b"", returncode=0)
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded.append((argv, timeout_s))
+        return _completed(stdout=b"file1.txt\n")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -166,8 +149,9 @@ async def test_argv_construction_exec_mode(
     assert result.timed_out is False
     assert result.profile == "docker:file_inspect:exec-netnone"
 
-    assert len(recorded_calls) == 1
-    args, _ = recorded_calls[0]
+    assert len(recorded) == 1
+    argv, timeout_s = recorded[0]
+    assert timeout_s == float(sample_exec_profile.timeout_s)
     expected_argv = [
         "docker",
         "run",
@@ -189,7 +173,7 @@ async def test_argv_construction_exec_mode(
         "-l",
         "/workspace",
     ]
-    assert list(args) == expected_argv
+    assert argv == expected_argv
 
 
 @pytest.mark.asyncio
@@ -199,13 +183,13 @@ async def test_argv_construction_shell_mode(
     sample_shell_profile: ToolProfile,
 ) -> None:
     """Validate argv flags, mounts, container name, and shell invocation for shell mode."""
-    recorded_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    recorded: list[tuple[list[str], float]] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        recorded_calls.append((args, kwargs))
-        return MockProcess(stdout=b"hello shell\n", stderr=b"", returncode=0)
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded.append((argv, timeout_s))
+        return _completed(stdout=b"hello shell\n")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -228,8 +212,8 @@ async def test_argv_construction_shell_mode(
     assert result.stdout == "hello shell\n"
     assert result.profile == "docker:shell:shell-netnone"
 
-    assert len(recorded_calls) == 1
-    args, _ = recorded_calls[0]
+    assert len(recorded) == 1
+    argv, _ = recorded[0]
     expected_argv = [
         "docker",
         "run",
@@ -251,7 +235,7 @@ async def test_argv_construction_shell_mode(
         "-c",
         "echo 'hello shell'",
     ]
-    assert list(args) == expected_argv
+    assert argv == expected_argv
 
 
 @pytest.mark.asyncio
@@ -261,13 +245,13 @@ async def test_argv_construction_mount_none(
     sample_none_mount_profile: ToolProfile,
 ) -> None:
     """When profile mount is 'none', no -v flag must be added."""
-    recorded_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    recorded: list[tuple[list[str], float]] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        recorded_calls.append((args, kwargs))
-        return MockProcess(stdout=b"computed\n", stderr=b"", returncode=0)
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded.append((argv, timeout_s))
+        return _completed(stdout=b"computed\n")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -285,12 +269,12 @@ async def test_argv_construction_mount_none(
 
     await sandbox.run(action)
 
-    args, _ = recorded_calls[0]
-    assert "-v" not in args
+    argv, _ = recorded[0]
+    assert "-v" not in argv
     # Ensure image comes right after --name argument
-    name_idx = list(args).index("--name")
-    assert args[name_idx + 1] == "warden-act-9999"
-    assert args[name_idx + 2] == sample_none_mount_profile.image
+    name_idx = list(argv).index("--name")
+    assert argv[name_idx + 1] == "warden-act-9999"
+    assert argv[name_idx + 2] == sample_none_mount_profile.image
 
 
 @pytest.mark.asyncio
@@ -300,13 +284,13 @@ async def test_container_name_sanitization(
     sample_exec_profile: ToolProfile,
 ) -> None:
     """Action id containing unsafe chars is sanitized to alphanumeric, dots, underscores, dashes."""
-    recorded_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    recorded: list[tuple[list[str], float]] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        recorded_calls.append((args, kwargs))
-        return MockProcess(stdout=b"", stderr=b"", returncode=0)
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded.append((argv, timeout_s))
+        return _completed()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -324,10 +308,47 @@ async def test_container_name_sanitization(
 
     await sandbox.run(action)
 
-    args, _ = recorded_calls[0]
-    name_idx = list(args).index("--name")
-    container_name = args[name_idx + 1]
+    argv, _ = recorded[0]
+    name_idx = list(argv).index("--name")
+    container_name = argv[name_idx + 1]
     assert container_name == "warden-act-sub-unsafe-name-123"
+
+
+@pytest.mark.asyncio
+async def test_image_override_replaces_registry_image(
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_path: Path,
+    sample_exec_profile: ToolProfile,
+) -> None:
+    """image_override (e.g. Settings.sandbox_image) replaces the pinned image."""
+    recorded: list[tuple[list[str], float]] = []
+
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded.append((argv, timeout_s))
+        return _completed()
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
+
+    sandbox = DockerSandbox(
+        workspace_path=workspace_path,
+        registry_getter=lambda name: sample_exec_profile,
+        image_override="custom-registry/alpine:3.20",
+    )
+
+    action = Action(
+        id="act-override",
+        kind=ActionKind.TOOL,
+        name="file_inspect",
+        payload={"argv": ["ls"]},
+        run_id="run-1",
+        thread_id="th-1",
+    )
+
+    await sandbox.run(action)
+
+    argv, _ = recorded[0]
+    assert "custom-registry/alpine:3.20" in argv
+    assert sample_exec_profile.image not in argv
 
 
 @pytest.mark.asyncio
@@ -429,19 +450,19 @@ async def test_timeout_handling_kills_and_removes_container(
     workspace_path: Path,
     sample_exec_profile: ToolProfile,
 ) -> None:
-    """Timeout during communicate() catches TimeoutError, calls docker kill and docker rm -f."""
-    recorded_calls: list[tuple[Any, ...]] = []
+    """TimeoutExpired from _blocking_run triggers best-effort container cleanup."""
+    recorded_runs: list[tuple[list[str], float]] = []
+    cleaned: list[str] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        recorded_calls.append(args)
-        if args[0:2] == ("docker", "kill"):
-            return MockProcess(returncode=0)
-        if args[0:3] == ("docker", "rm", "-f"):
-            return MockProcess(returncode=0)
-        # Main docker run command: raise TimeoutError
-        return MockProcess(communicate_exc=TimeoutError("Process timed out"))
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        recorded_runs.append((argv, timeout_s))
+        raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout_s)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    def fake_reconcile(container_name: str) -> None:
+        cleaned.append(container_name)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_reconcile", fake_reconcile)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -465,9 +486,10 @@ async def test_timeout_handling_kills_and_removes_container(
     assert result.duration_ms >= 0
     assert result.profile == "docker:file_inspect:exec-netnone"
 
-    # Verify docker kill and docker rm were called with the container name
-    assert ("docker", "kill", "warden-act-timeout") in recorded_calls
-    assert ("docker", "rm", "-f", "warden-act-timeout") in recorded_calls
+    # Profile timeout must have been passed to the blocking call
+    assert recorded_runs[0][1] == float(sample_exec_profile.timeout_s)
+    # Container cleanup ran for this container
+    assert cleaned == ["warden-act-timeout"]
 
 
 @pytest.mark.asyncio
@@ -480,14 +502,10 @@ async def test_output_truncation_to_output_cap_bytes(
     oversized_stdout = b"A" * (OUTPUT_CAP_BYTES + 4096)
     oversized_stderr = b"E" * (OUTPUT_CAP_BYTES + 8192)
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        return MockProcess(
-            stdout=oversized_stdout,
-            stderr=oversized_stderr,
-            returncode=0,
-        )
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        return _completed(stdout=oversized_stdout, stderr=oversized_stderr)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -534,14 +552,10 @@ async def test_docker_daemon_down_or_pull_failure_raises_sandbox_unavailable(
     error_stderr: str,
 ) -> None:
     """Docker daemon unreachable or pull failure heuristics in stderr raise SandboxUnavailable."""
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        return MockProcess(
-            stdout=b"",
-            stderr=error_stderr.encode("utf-8"),
-            returncode=125,
-        )
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        return _completed(stderr=error_stderr.encode("utf-8"), returncode=125)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -568,10 +582,10 @@ async def test_file_not_found_error_raises_sandbox_unavailable(
     sample_exec_profile: ToolProfile,
 ) -> None:
     """When docker CLI executable is missing from PATH, raise SandboxUnavailable."""
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        raise FileNotFoundError("[Errno 2] No such file or directory: 'docker'")
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        raise FileNotFoundError(2, "No such file or directory", "docker")
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -598,14 +612,10 @@ async def test_normal_non_zero_exit_returns_sandbox_result(
     sample_exec_profile: ToolProfile,
 ) -> None:
     """A command returning exit code 1 inside the container returns SandboxResult(ok=False, exit_code=1)."""
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        return MockProcess(
-            stdout=b"",
-            stderr=b"grep: pattern not found\n",
-            returncode=1,
-        )
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        return _completed(stderr=b"grep: pattern not found\n", returncode=1)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -637,30 +647,20 @@ async def test_cancellation_cleans_up_container_and_reraises(
     sample_exec_profile: ToolProfile,
 ) -> None:
     """When action execution is cancelled, container cleanup runs and CancelledError propagates."""
-    killed_containers: list[str] = []
-    removed_containers: list[str] = []
+    cleaned: list[str] = []
 
-    async def fake_create_subprocess_exec(*args: Any, **kwargs: Any) -> MockProcess:
-        cmd = args[0]
-        if cmd == "docker":
-            subcmd = args[1]
-            if subcmd == "run":
-                async def hanging_communicate() -> tuple[bytes, bytes]:
-                    await asyncio.sleep(10)
-                    return b"", b""
+    def fake_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+        time.sleep(0.5)
+        return _completed()
 
-                proc = MockProcess(returncode=0)
-                proc.communicate = hanging_communicate  # type: ignore[method-assign]
-                return proc
-            if subcmd == "kill":
-                killed_containers.append(args[2])
-                return MockProcess(returncode=0)
-            if subcmd == "rm":
-                removed_containers.append(args[3])
-                return MockProcess(returncode=0)
-        return MockProcess(returncode=0)
+    def fake_cleanup(container_name: str) -> None:
+        cleaned.append(container_name)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    def fake_reconcile(container_name: str) -> None:
+        fake_cleanup(container_name)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_reconcile", fake_reconcile)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -677,11 +677,53 @@ async def test_cancellation_cleans_up_container_and_reraises(
     )
 
     task = asyncio.create_task(sandbox.run(action))
-    await asyncio.sleep(0.02)
+    await asyncio.sleep(0.05)
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert "warden-act-cancel" in killed_containers
-    assert "warden-act-cancel" in removed_containers
+    assert cleaned == ["warden-act-cancel"]
+
+
+def test_reconcile_retries_until_container_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_blocking_reconcile re-removes while docker inspect still sees the name."""
+    from warden.sandbox.docker import _blocking_reconcile
+
+    cleaned: list[str] = []
+    seen: list[bool] = [True, True, False]
+
+    def fake_cleanup(container_name: str) -> None:
+        cleaned.append(container_name)
+
+    def fake_exists(container_name: str) -> bool:
+        assert container_name == "warden-late-container"
+        return seen.pop(0)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._container_exists", fake_exists)
+
+    _blocking_reconcile("warden-late-container", attempts=5, delay_s=0.0)
+
+    assert cleaned == ["warden-late-container"] * 3
+
+
+def test_reconcile_gives_up_after_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_blocking_reconcile stops after `attempts` even if the name persists."""
+    from warden.sandbox.docker import _blocking_reconcile
+
+    cleaned: list[str] = []
+
+    def fake_cleanup(container_name: str) -> None:
+        cleaned.append(container_name)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._container_exists", lambda name: True)
+
+    _blocking_reconcile("warden-stuck", attempts=3, delay_s=0.0)
+
+    assert cleaned == ["warden-stuck"] * 3

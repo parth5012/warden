@@ -428,7 +428,7 @@ def _check(*, condition: bool, case: dict[str, Any], field: str,
     if not condition:
         cid = case.get("id", "<unassigned>")
         raise ValidationFailure(
-            f"Warden validation failed: case {cid}, field {field}: {message}"
+            f"Aegis validation failed: case {cid}, field {field}: {message}"
         )
 
 
@@ -447,7 +447,7 @@ def validate_dataset(
         cid = case["id"]
         if cid in seen_ids:
             raise ValidationFailure(
-                f"Warden validation failed: duplicate id {cid} "
+                f"Aegis validation failed: duplicate id {cid} "
                 f"at record #{idx + 1}"
             )
         seen_ids.add(cid)
@@ -464,7 +464,7 @@ def validate_dataset(
                 diff.append(f"{cat}: got {got}, want {want}")
         detail = "; ".join(diff) if diff else "counts match"
         raise ValidationFailure(
-            f"Warden validation failed: category counts mismatch ({detail})"
+            f"Aegis validation failed: category counts mismatch ({detail})"
         )
 
 
@@ -475,7 +475,7 @@ def jsonl_dump(cases: list[dict[str, Any]]) -> str:
             json.dumps(case, ensure_ascii=False, sort_keys=True)
         except TypeError as exc:
             raise ValidationFailure(
-                f"Warden validation failed: case {case['id']} is not JSON-"
+                f"Aegis validation failed: case {case['id']} is not JSON-"
                 f"serializable: {exc}"
             ) from exc
         lines.append(json.dumps(case, ensure_ascii=False, sort_keys=True))

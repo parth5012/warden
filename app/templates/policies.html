@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}L1/L2 Policies — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">L1 & L2 Policy Governance</h1>
+            <span class="storage-mode-pill live" title="Append-only policy catalog backed by versioned rules (Lock 9)">
+                <span class="mode-dot"></span> IMMUTABLE (LOCK 9)
+            </span>
+            <span class="storage-mode-pill demo" title="L2 semantic similarity using pgvector 1536-dim embeddings">
+                <span class="mode-dot"></span> PGVECTOR L2 ACTIVE
+            </span>
+        </div>
+        <p class="page-subtitle">
+            Deterministic structural invariants (L1 AST/POSIX) and semantic cosine embeddings (L2) guarding the execution seam.
+        </p>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="audit-header-actions">
+        <button
+            class="btn-icon-toggle audit-btn"
+            hx-get="/policies"
+            hx-target="#policies-table-container"
+            hx-swap="innerHTML"
+            title="Refresh policies catalog"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- KPI Metrics Grid -->
+<div class="audit-kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TOTAL POLICIES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.total }}</div>
+        <div class="kpi-caption">Active rules in catalog</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">L1 STRUCTURAL</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.l1_count }}</div>
+        <div class="kpi-caption">POSIX, AST & regex gates</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">L2 SEMANTIC</span>
+            <div class="kpi-icon-wrap" style="color: #a855f7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3m0 14v3M2 12h3m14 0h3"></path></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: #c084fc;">{{ metrics.l2_count }}</div>
+        <div class="kpi-caption">Vector embedding clusters</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TERMINAL DENIES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-ruby);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-ruby);">{{ metrics.deny_count }}</div>
+        <div class="kpi-caption">Hard terminal blocks (Lock 5)</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">HUMAN ESCALATIONS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-amber);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-amber);">{{ metrics.escalate_count }}</div>
+        <div class="kpi-caption">HITL gate interruptions</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">ENFORCED RULES</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-emerald);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-emerald);">{{ metrics.active_count }}</div>
+        <div class="kpi-caption">Live on seam evaluation</div>
+    </div>
+</div>
+
+<!-- Filter & Search Controls Bar -->
+<div class="audit-filter-panel">
+    <form
+        id="policies-filter-form"
+        class="filter-row"
+        hx-get="/policies"
+        hx-target="#policies-table-container"
+        hx-swap="innerHTML"
+        hx-trigger="change, keyup delay:300ms from:#policy-search-input"
+    >
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Tier Filter</label>
+            <select name="tier" class="filter-select">
+                <option value="all" {% if selected_tier == 'all' %}selected{% endif %}>All Tiers (L1 & L2)</option>
+                <option value="L1" {% if selected_tier == 'L1' %}selected{% endif %}>L1 — Structural Rules</option>
+                <option value="L2" {% if selected_tier == 'L2' %}selected{% endif %}>L2 — Semantic Embeddings</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Verdict</label>
+            <select name="action" class="filter-select">
+                <option value="all" {% if selected_action == 'all' %}selected{% endif %}>All Verdicts</option>
+                <option value="deny" {% if selected_action == 'deny' %}selected{% endif %}>Deny (Terminal Block)</option>
+                <option value="escalate" {% if selected_action == 'escalate' %}selected{% endif %}>Escalate (HITL Review)</option>
+                <option value="allow" {% if selected_action == 'allow' %}selected{% endif %}>Allow (Safe Dispatch)</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group" style="flex: 2; min-width: 240px;">
+            <label class="filter-label">Search Rules</label>
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input
+                id="policy-search-input"
+                type="text"
+                name="q"
+                class="filter-input search-input"
+                placeholder="Search by ID, name, engine, or pattern..."
+                value="{{ q }}"
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="filter-actions">
+            <a href="/policies" class="btn-clear-filters">Clear Filters</a>
+        </div>
+    </form>
+</div>
+
+<!-- Table Container -->
+<div id="policies-table-container">
+    {% include "components/policies_table_fragment.html" %}
+</div>
+
+<!-- Policy Architecture Informational Callout -->
+<div class="policy-footer-note" style="margin-top: 2rem; padding: 1.25rem; background: var(--bg-surface-elevated, #161c28); border-radius: 8px; border: 1px solid var(--border-color, #222d3d);">
+    <div style="display: flex; gap: 1rem; align-items: flex-start;">
+        <div style="color: var(--color-cyan); padding-top: 0.2rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        </div>
+        <div>
+            <h4 style="margin: 0 0 0.35rem 0; font-size: 0.92rem; color: var(--text-primary); font-family: var(--font-sans);">
+                Two-Tier Policy Evaluation Architecture & Immutability Guarantee
+            </h4>
+            <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55;">
+                <strong>L1 Tier:</strong> Sub-millisecond deterministic evaluation running POSIX path canonicalization, SQL AST parser checks, and destructive file volume counters before execution.<br>
+                <strong>L2 Tier:</strong> Semantic cosine similarity scoring using pgvector embeddings against known prompt injection and exfiltration heuristics.<br>
+                <strong>Lock 9 Guarantee:</strong> Per <code>ARCHITECTURE.md</code>, all policy revisions are strictly append-only into <code>policy_versions</code>. Terminal <code>DENY</code> decisions can never be overridden by human approval (Lock 5).
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

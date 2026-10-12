@@ -1,6 +1,6 @@
-# Warden — Documentation Index
+# Aegis — Documentation Index
 
-This directory contains shared architecture, API, data model, security, testing, and integration documents for the Warden project.
+This directory contains shared architecture, API, data model, security, testing, and integration documents for the Aegis project.
 
 **Start here if you are new to the project.** After reading this index, follow the recommended reading order below before touching any code.
 
@@ -46,6 +46,7 @@ This directory contains shared architecture, API, data model, security, testing,
 | [`API_CONTRACT.md`](API_CONTRACT.md) | HTTP routes, request/response schemas, auth requirements | Available |
 | [`DATA_MODEL.md`](DATA_MODEL.md) | Domain types, persistence schemas, contract definitions | Available |
 | [`INTEGRATION_GUIDE.md`](INTEGRATION_GUIDE.md) | Component wiring, integration order, mock interfaces | Available |
+| [`AGENT_INTEGRATION.md`](AGENT_INTEGRATION.md) | Agent chat interface, protocol, and external webhook API | Available |
 
 ### Team and Process
 
@@ -61,6 +62,7 @@ This directory contains shared architecture, API, data model, security, testing,
 |---|---|---|
 | [`TESTING_STRATEGY.md`](TESTING_STRATEGY.md) | Test inventory, scenarios, acceptance criteria | Available |
 | [`SECURITY_MODEL.md`](SECURITY_MODEL.md) | Threat model, enforcement posture, unresolved risks | Available |
+| [`AUDIT_LOG.md`](AUDIT_LOG.md) | Write-ahead journal, hash chaining, OWASP protections | Available |
 | [`REALTIME_EVENTS.md`](REALTIME_EVENTS.md) | HTMX polling, SSE contracts | Available |
 
 ---

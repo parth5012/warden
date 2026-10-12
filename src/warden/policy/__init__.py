@@ -1,4 +1,4 @@
-"""Policy package for Warden governance."""
+"""Policy package for Aegis rule-based and layered governance."""
 
 from warden.policy.engine import (
     PolicyDecision,
@@ -8,6 +8,7 @@ from warden.policy.engine import (
     PolicyResult,
     PolicyRule,
     PolicyUnavailableError,
+    PolicyVerdict,
     get_seed_policies,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "PolicyResult",
     "PolicyRule",
     "PolicyUnavailableError",
+    "PolicyVerdict",
     "get_seed_policies",
 ]

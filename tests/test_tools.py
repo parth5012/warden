@@ -1,4 +1,4 @@
-"""Comprehensive tests for Warden Phase 1 Step 2 operational tools.
+"""Comprehensive tests for Aegis Phase 1 Step 2 operational tools.
 
 Covers:
 - get_system_metrics: allowlisted services, supported metrics, window bounds, GuardedExecutor integration.

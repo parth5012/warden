@@ -26,10 +26,10 @@ def pg_uri() -> Iterator[str]:
         yield settings.postgres_uri
         return
 
-    import pgserver  # type: ignore[import-not-found]
+    import pgserver
 
     dbdir = tempfile.mkdtemp(prefix="warden-pg-")
-    srv = pgserver.get_server(dbdir)
+    srv = pgserver.get_server(dbdir)  # type: ignore[attr-defined]
     try:
         yield str(srv.get_uri())
     finally:

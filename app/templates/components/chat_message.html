@@ -1,0 +1,113 @@
+<div class="chat-message-row {{ msg.role }}" id="msg-{{ msg.id }}">
+    <div class="msg-avatar {% if msg.role == 'user' %}user-avatar{% else %}agent-avatar{% endif %}">
+        {% if msg.role == 'user' %}
+            RK
+        {% else %}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        {% endif %}
+    </div>
+
+    <div class="msg-bubble-wrap">
+        <div class="msg-meta-header">
+            <span class="msg-sender-name">
+                {% if msg.role == 'user' %}
+                    Security Operator (Raghav)
+                {% else %}
+                    {{ msg.agent_name|default('Aegis Agent') }}
+                {% endif %}
+            </span>
+            {% if msg.agent_model %}
+                <span class="badge" style="font-size: 0.65rem; background: rgba(255,255,255,0.06); padding: 0.1rem 0.35rem; border-radius: 3px;">
+                    {{ msg.agent_model }}
+                </span>
+            {% endif %}
+            <span style="font-size: 0.68rem; color: var(--text-muted);">
+                {{ msg.timestamp[11:19] if msg.timestamp|length > 18 else '' }}
+            </span>
+        </div>
+
+        <div class="msg-bubble">
+            <div style="white-space: pre-wrap;">{{ msg.content }}</div>
+
+            <!-- Proposed Tool Action Box -->
+            {% if msg.action_proposal %}
+            <div class="tool-proposal-box">
+                <div class="tool-proposal-header">
+                    <span class="tool-name-tag">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                        PROPOSED TOOL: {{ msg.action_proposal.name }}()
+                    </span>
+                    <span style="color: var(--text-muted); font-size: 0.68rem;">Action ID: {{ msg.action_proposal.id }}</span>
+                </div>
+                <pre class="tool-args-pre">{{ msg.action_proposal.payload | tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+
+            <!-- Seam Verdict: Terminal Deny (Lock 5) -->
+            {% if msg.verdict == 'denied' %}
+            <div class="terminal-deny-chat-card">
+                <div class="terminal-deny-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                    <span>TERMINAL POLICY DENY (LOCK 5) · {{ msg.policy_id }}</span>
+                </div>
+                <div class="terminal-deny-desc">
+                    {{ msg.policy_reason }}
+                </div>
+                {% if msg.execution_result %}
+                <div style="font-size: 0.72rem; color: #fca5a5; font-family: var(--font-mono); margin-top: 0.2rem;">
+                    {{ msg.execution_result }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Seam Verdict: HITL Escalation (Gate Pending) -->
+            {% elif msg.verdict == 'escalated' %}
+            <div class="hitl-chat-gate-card">
+                <div class="gate-badge-label">
+                    <span class="pulse-dot" style="background: #fbbf24; box-shadow: 0 0 6px #fbbf24;"></span>
+                    <span>INTERCEPTION GATE ACTIVE · #{{ msg.gate_id }}</span>
+                </div>
+                <div class="gate-reason-text">
+                    <strong>Policy {{ msg.policy_id }}:</strong> {{ msg.policy_reason }}
+                </div>
+                <div class="gate-decision-actions">
+                    <button
+                        class="btn-chat-approve"
+                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision"
+                        hx-vals='{"verdict": "approve", "thread_id": "{{ thread_id }}"}'
+                        hx-target="#chat-messages-box"
+                        hx-swap="innerHTML"
+                        title="Authorize this operation and dispatch to sandbox"
+                    >
+                        ✓ Approve & Execute
+                    </button>
+                    <button
+                        class="btn-chat-deny"
+                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision"
+                        hx-vals='{"verdict": "deny", "thread_id": "{{ thread_id }}"}'
+                        hx-target="#chat-messages-box"
+                        hx-swap="innerHTML"
+                        title="Reject this operation"
+                    >
+                        ✕ Deny Operation
+                    </button>
+                </div>
+            </div>
+
+            <!-- Post-Decision: Approved & Executed -->
+            {% elif msg.verdict == 'approved' %}
+            <div class="exec-result-chip">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>{{ msg.execution_result }}</span>
+            </div>
+
+            <!-- Allowed Deterministically -->
+            {% elif msg.verdict == 'allowed' and msg.execution_result %}
+            <div class="exec-result-chip">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>
+                <span>{{ msg.execution_result }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
