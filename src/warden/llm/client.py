@@ -77,14 +77,17 @@ class GuardedLLMClient:
         tokenizer: TokenEstimator | None = None,
         pricing: PricingRegistry | None = None,
         budget_manager: BudgetManager | None = None,
-        rate_limiter: RateLimitingExecutor | None = None,
+        rate_limiter: RateLimitingExecutor | RateLimitConfig | None = None,
         telemetry_sink: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.provider_caller = provider_caller
         self.tokenizer = tokenizer or TokenEstimator()
         self.pricing = pricing or PricingRegistry()
         self.budget_manager = budget_manager or BudgetManager()
-        self.rate_limiter = rate_limiter or RateLimitingExecutor()
+        if isinstance(rate_limiter, RateLimitConfig):
+            self.rate_limiter = RateLimitingExecutor(rate_limiter)
+        else:
+            self.rate_limiter = rate_limiter or RateLimitingExecutor()
         self.telemetry_sink = telemetry_sink
 
     async def invoke(
@@ -221,6 +224,7 @@ class GuardedLLMClient:
             return exec_result
 
         except Exception as exc:
+            retry_count = int(getattr(exc, "retry_count", retry_count))
             # Release any active budget reservation on failure
             if reserved_cost > Decimal("0"):
                 await self.budget_manager.release_reservation(

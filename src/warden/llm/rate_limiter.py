@@ -151,6 +151,10 @@ class RateLimitingExecutor:
             except Exception as exc:
                 last_exception = exc
                 if not self.is_retryable(exc) or retries >= self.config.max_retries:
+                    try:
+                        setattr(exc, "retry_count", retries)
+                    except Exception:
+                        pass
                     raise
 
                 delay = self.get_retry_delay(retries, exc)
@@ -158,5 +162,9 @@ class RateLimitingExecutor:
                 await asyncio.sleep(delay)
 
         if last_exception:
+            try:
+                setattr(last_exception, "retry_count", retries)
+            except Exception:
+                pass
             raise last_exception
         raise RuntimeError("Retry loop exited without result or exception")

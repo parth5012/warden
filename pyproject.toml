@@ -14,6 +14,7 @@ dependencies = [
     "langchain-core>=1.0.0",
     "typing-extensions>=4.12.0",
     "langchain-openai>=0.3.0",
+    "sqlglot>=30.22.0",
 ]
 
 [project.optional-dependencies]
