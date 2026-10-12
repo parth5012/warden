@@ -1,0 +1,41 @@
+<tr id="grant-row-{{ grant.id }}" class="grant-row">
+    <td class="font-mono" style="color: var(--color-cyan, #06b6d4);">{{ grant.id }}</td>
+    <td class="font-mono" style="color: var(--text-muted, #94a3b8); font-size: 0.75rem;">{{ grant.thread_id }}</td>
+    <td>
+        {% for rule in grant.scope %}
+            <span class="badge" style="background: rgba(6, 182, 212, 0.1); color: var(--color-cyan, #06b6d4); font-size: 0.72rem; padding: 0.1rem 0.35rem; border-radius: 3px;">{{ rule.tool }}</span>
+            {% if rule.constraints %}
+                <span style="color: var(--text-muted, #94a3b8); font-size: 0.72rem; font-family: var(--font-mono);">{{ rule.constraints | tojson }}</span>
+            {% endif %}
+        {% endfor %}
+    </td>
+    <td style="font-size: 0.8rem;">{{ grant.granted_by }}</td>
+    <td>
+        <span style="font-weight: 600;">{{ grant.uses }} / {{ grant.max_uses }}</span>
+        <span style="color: var(--text-muted, #94a3b8); font-size: 0.7rem;">({{ grant.uses_left }} left)</span>
+    </td>
+    <td>
+        <span style="color: var(--text-muted, #94a3b8); font-size: 0.75rem; font-family: var(--font-mono);">{{ grant.time_display }}</span>
+    </td>
+    <td>
+        <span class="badge status-{{ grant.status }}" style="font-size: 0.72rem; padding: 0.15rem 0.4rem; border-radius: 4px; {% if grant.status == 'active' %}background: rgba(16, 185, 129, 0.15); color: #10b981;{% elif grant.status == 'revoked' %}background: rgba(239, 68, 68, 0.15); color: #ef4444;{% else %}background: rgba(148, 163, 184, 0.15); color: #94a3b8;{% endif %}">
+            {{ grant.status|upper }}
+        </span>
+    </td>
+    <td>
+        {% if grant.status == 'active' %}
+        <button
+            class="btn-revoke"
+            style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer;"
+            hx-post="/grants/{{ grant.id }}/revoke"
+            hx-target="#grant-row-{{ grant.id }}"
+            hx-swap="outerHTML"
+            title="Revoke capability grant immediately"
+        >
+            Revoke
+        </button>
+        {% else %}
+        <span style="color: var(--text-muted, #94a3b8); font-size: 0.72rem;">—</span>
+        {% endif %}
+    </td>
+</tr>

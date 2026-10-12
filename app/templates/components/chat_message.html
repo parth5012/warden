@@ -91,7 +91,25 @@
                     >
                         ✕ Deny Operation
                     </button>
+                    <button
+                        class="btn-chat-grant"
+                        style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); padding: 0.35rem 0.65rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;"
+                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/grant"
+                        hx-vals='{"thread_id": "{{ thread_id }}"}'
+                        hx-target="#chat-messages-box"
+                        hx-swap="innerHTML"
+                        title="Grant rest of task: issue task grant covering this operation and auto-resolve"
+                    >
+                        ⚡ Grant Rest of Task
+                    </button>
                 </div>
+            </div>
+
+            <!-- Post-Decision: Granted Rest of Task -->
+            {% elif msg.verdict == 'granted' %}
+            <div class="exec-result-chip" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>TASK CAPABILITY GRANTED: {{ msg.execution_result }}</span>
             </div>
 
             <!-- Post-Decision: Approved & Executed -->

@@ -144,6 +144,21 @@
                 <input type="hidden" name="agent_name" id="form-agent-name" value="{{ active_agent.name }}">
                 <input type="hidden" name="thread_id" id="form-thread-id" value="{{ thread_id }}">
 
+                <details class="grant-form-block" style="width: 100%; margin-bottom: 0.5rem; font-size: 0.75rem; color: var(--text-muted, #94a3b8);">
+                    <summary style="cursor: pointer; color: var(--color-cyan, #06b6d4); font-weight: 600;">
+                        ⚡ Attach temporary capability grant (optional)
+                    </summary>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 0.4rem; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border-subtle, #334155); align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 0.3rem;">
+                            <input type="checkbox" name="attach_grant" value="1">
+                            Enable
+                        </label>
+                        <input type="text" name="grant_tool" placeholder="Tool (*)" value="*" style="width: 70px; padding: 0.2rem; background: var(--bg-base); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 3px; font-size: 0.72rem;">
+                        <input type="number" name="grant_ttl" placeholder="TTL min (30)" value="30" min="5" max="240" style="width: 70px; padding: 0.2rem; background: var(--bg-base); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 3px; font-size: 0.72rem;">
+                        <input type="number" name="grant_uses" placeholder="Uses (5)" value="5" min="1" max="50" style="width: 60px; padding: 0.2rem; background: var(--bg-base); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 3px; font-size: 0.72rem;">
+                    </div>
+                </details>
+
                 <textarea
                     id="chat-user-input"
                     name="message"

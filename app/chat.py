@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.audit import EventKind, JOURNAL_STORE, JournalEvent
+from app.grants import derive_scope_from_payload
 from warden.agent_engine import (
     AGENT_REGISTRY,
     AgentTurnResult,
@@ -32,6 +33,7 @@ from warden.agent_engine import (
     evaluate_via_executor,
 )
 from warden.executor import GuardedExecutor
+from warden.grants import Grant, GrantStatus, ScopeRule, get_grants_store
 from warden.journal import get_journal
 from warden.models import (
     Action,
@@ -133,6 +135,10 @@ async def send_chat_message(
     message: str = Form(...),
     agent_name: str = Form("OpsAssistant"),
     thread_id: str = Form(DEFAULT_THREAD_ID),
+    attach_grant: Optional[str] = Form(None),
+    grant_tool: str = Form("*"),
+    grant_ttl: int = Form(30),
+    grant_uses: int = Form(5),
 ):
     """Process user message, execute agent turn, apply seam policy interception,
     and return the updated chat message feed via HTMX.
@@ -169,6 +175,37 @@ async def send_chat_message(
             ts=datetime.now(timezone.utc).isoformat(),
         )
     )
+
+    # Optional upfront grant issuance alongside task start
+    if attach_grant and attach_grant in ("1", "true", "on", "yes"):
+        ttl = max(5, min(240, grant_ttl))
+        uses = max(1, min(50, grant_uses))
+        g_id = f"gr_{uuid.uuid4().hex[:8]}"
+        upfront_grant = Grant(
+            id=g_id,
+            thread_id=thread_id,
+            granted_by=request.headers.get("Warden-Key") or "operator",
+            scope=(ScopeRule(tool=grant_tool),),
+            ttl_seconds=ttl * 60,
+            max_uses=uses,
+            reason="Upfront task capability grant",
+        )
+        get_grants_store().issue(upfront_grant)
+        JOURNAL_STORE.append(
+            JournalEvent(
+                id=f"ev_grant_{uuid.uuid4().hex[:6]}",
+                run_id=f"run_{thread_id}",
+                thread_id=thread_id,
+                action_id=user_msg_id,
+                checkpoint_step=len(session),
+                actor=f"approver:{upfront_grant.granted_by}",
+                status="Issued",
+                description=f"Upfront grant {g_id} attached to task ({ttl}m, {uses} uses)",
+                payload={"grant_id": g_id, "tool": grant_tool, "max_uses": uses, "ttl_minutes": ttl},
+                kind=EventKind.GRANT_ISSUED.value,
+                ts=datetime.now(timezone.utc).isoformat(),
+            )
+        )
 
     # 2. Invoke Agent Step
     turn_result: AgentTurnResult = await agent.process_message(clean_msg, thread_id, session)
@@ -304,6 +341,108 @@ async def decide_chat_action(
         target_msg.execution_result = f"Rejected by Operator (Raghav). Action was aborted; no side effects occurred."
 
     # Return updated message list
+    return templates.TemplateResponse(
+        request=request,
+        name="components/chat_messages_list.html",
+        context={"messages": session, "thread_id": thread_id},
+    )
+
+
+@router.post("/chat/actions/{action_id}/grant", response_class=HTMLResponse)
+async def grant_chat_action(
+    request: Request,
+    action_id: str,
+    thread_id: str = Form(DEFAULT_THREAD_ID),
+    ttl_minutes: int = Form(30),
+    max_uses: int = Form(5),
+) -> HTMLResponse:
+    """Upgrade a parked gate: issue grant covering the rest of the task and execute."""
+    session = _get_or_create_session(thread_id)
+
+    target_msg = None
+    for msg in session:
+        if msg.action_proposal and msg.action_proposal.get("id") == action_id:
+            target_msg = msg
+            break
+
+    if not target_msg:
+        raise HTTPException(status_code=404, detail="Action not found in chat history")
+
+    if target_msg.verdict != "escalated":
+        raise HTTPException(status_code=409, detail=f"Action is already resolved ({target_msg.verdict})")
+
+    if not (5 <= ttl_minutes <= 240):
+        raise HTTPException(status_code=422, detail="ttl_minutes must be between 5 and 240")
+
+    if not (1 <= max_uses <= 50):
+        raise HTTPException(status_code=422, detail="max_uses must be between 1 and 50")
+
+    proposal = target_msg.action_proposal or {}
+    tool_name = str(proposal.get("name", "tool"))
+    payload = dict(proposal.get("payload", {}))
+
+    rule = derive_scope_from_payload(tool_name, payload)
+
+    grant_id = f"gr_{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc)
+    granted_by = request.headers.get("Warden-Key") or "Raghav (Security Operator)"
+    grant = Grant(
+        id=grant_id,
+        thread_id=thread_id,
+        granted_by=granted_by,
+        scope=(rule,),
+        ttl_seconds=ttl_minutes * 60,
+        max_uses=max_uses,
+        uses=0,
+        status=GrantStatus.ACTIVE,
+        created_at=now,
+        reason=f"Task capability granted from gate #{target_msg.gate_id or action_id}",
+    )
+    get_grants_store().issue(grant)
+
+    JOURNAL_STORE.append(
+        JournalEvent(
+            id=f"ev_grant_{uuid.uuid4().hex[:6]}",
+            run_id=f"run_{thread_id}",
+            thread_id=thread_id,
+            action_id=action_id,
+            checkpoint_step=len(session),
+            actor=f"approver:{granted_by}",
+            status="Issued",
+            description=f"Grant {grant_id} issued for rest of task ({ttl_minutes}m, {max_uses} uses)",
+            payload={"grant_id": grant_id, "tool": tool_name, "constraints": rule.constraints},
+            kind=EventKind.GRANT_ISSUED.value,
+            ts=datetime.now(timezone.utc).isoformat(),
+        )
+    )
+
+    action = Action(
+        id=action_id,
+        kind=ActionKind(proposal.get("kind", ActionKind.TOOL.value)),
+        name=tool_name,
+        payload=payload,
+        run_id=proposal.get("run_id") or f"run_{thread_id}",
+        thread_id=proposal.get("thread_id") or thread_id,
+    )
+    ctx = ExecutionContext(
+        actor=target_msg.agent_name or "OpsAssistant",
+        thread_id=thread_id,
+        checkpoint_step=len(session) + 1,
+    )
+
+    executor = GuardedExecutor(journal=JOURNAL_STORE)
+    outcome = await executor.execute(action, ctx)
+    from warden.models import Allowed
+
+    updated_grant = get_grants_store().get(grant_id)
+    remaining = updated_grant.max_uses - updated_grant.uses if updated_grant else 0
+
+    target_msg.verdict = "granted"
+    target_msg.execution_result = (
+        f"Task capability granted ({grant_id}, {remaining} uses left). "
+        f"{'Action executed successfully.' if isinstance(outcome, Allowed) else f'Execution ended with {outcome.__class__.__name__}.'}"
+    )
+
     return templates.TemplateResponse(
         request=request,
         name="components/chat_messages_list.html",

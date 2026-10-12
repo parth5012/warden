@@ -1,0 +1,27 @@
+<div id="grants-table-container">
+    <table class="table-grants" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--border-subtle, #334155); color: var(--text-muted, #94a3b8); text-align: left;">
+                <th style="padding: 0.5rem;">ID</th>
+                <th style="padding: 0.5rem;">THREAD</th>
+                <th style="padding: 0.5rem;">SCOPE</th>
+                <th style="padding: 0.5rem;">GRANTED BY</th>
+                <th style="padding: 0.5rem;">USES</th>
+                <th style="padding: 0.5rem;">TTL LEFT</th>
+                <th style="padding: 0.5rem;">STATUS</th>
+                <th style="padding: 0.5rem;">ACTIONS</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for grant in grants %}
+                {% include "components/grant_row.html" %}
+            {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-muted, #94a3b8);">
+                        No capability grants active. Issue one upfront or upgrade from an interception gate.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

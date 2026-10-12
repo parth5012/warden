@@ -1,7 +1,7 @@
 # Grant-05: Grants HTTP + task form + inbox upgrade + grants list
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: Grant-04 · Claim: _unclaimed_
+Blocked by: Grant-04 · Claim: `@me`
 
 ## Question
 
@@ -17,8 +17,8 @@ Expose both issuance paths (upfront grant block, inbox "grant rest of task") plu
 
 ## Done when
 
-- [ ] Both issuance paths work end to end against the Grant-04 executor behavior.
-- [ ] pytest + mypy clean; templates render without Jinja errors.
+- [x] Both issuance paths work end to end against the Grant-04 executor behavior.
+- [x] pytest + mypy clean; templates render without Jinja errors.
 
 ## Context pointers
 
@@ -27,4 +27,4 @@ Expose both issuance paths (upfront grant block, inbox "grant rest of task") plu
 
 ## Resolution
 
-_unresolved — agent: append routes + manual click-through notes + verification output, then mark boxes._
+Implemented `app/grants.py` router with `POST /grants`, `GET /grants`, and `POST /grants/{id}/revoke` endpoints supporting JSON and HTMX fragments. Validated TTL (5..240) and max-uses (1..50) ranges, 404 on missing grant, 409 on already-terminal revoke. Added "Grant Rest of Task" inbox upgrade in `app/chat.py` (`POST /chat/actions/{action_id}/grant`) and template `chat_message.html` with prefilled scope derivation that consumes exactly one grant use. Added HTMX templates `grant_row.html`, `grants_table_fragment.html`, and `grants.html`. Added integration tests in `tests/test_grants_http.py`. All 306 tests pass (6 skipped); mypy strict clean (0 errors in 68 files).
