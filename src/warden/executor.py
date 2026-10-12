@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from warden.config import get_clef_client, get_groq_llm, settings
+from warden.grants import GrantsStore, get_grants_store
 from warden.journal import AuditJournal, EventKind, InMemoryJournal, get_journal
 from warden.llm.client import GuardedLLMClient
 from warden.llm.types import LLMRequest
@@ -74,6 +75,7 @@ class GuardedExecutor:
         policy: Optional[PolicyEngine] = None,
         sandbox: Optional[SandboxPort] = None,
         llm_provider: Optional[LLMProviderFn] = None,
+        grants: Optional[GrantsStore] = None,
     ) -> None:
         self.journal: AuditJournal = journal if journal is not None else get_journal()
         # Production default: live Clef L2 when Cloudflare creds are configured,
@@ -84,6 +86,7 @@ class GuardedExecutor:
         )
         self._sandbox: Optional[SandboxPort] = sandbox
         self.llm_provider: Optional[LLMProviderFn] = llm_provider
+        self._grants: Optional[GrantsStore] = grants
         self.telemetry: Dict[str, AgentTelemetry] = {}
 
     @property
@@ -91,6 +94,12 @@ class GuardedExecutor:
         if self._sandbox is None:
             self._sandbox = DockerSandbox(workspace_path=settings.sandbox_workspace)
         return self._sandbox
+
+    @property
+    def grants(self) -> GrantsStore:
+        if self._grants is None:
+            self._grants = get_grants_store()
+        return self._grants
 
     def get_telemetry(self, actor: str) -> AgentTelemetry:
         return self.telemetry.setdefault(actor, AgentTelemetry())
@@ -254,37 +263,61 @@ class GuardedExecutor:
             )
 
             if approval is None:
-                tele.gated += 1
+                # Check for covering active grant
+                covering_grant = self.grants.find_covering_grant(
+                    action.thread_id, action.name, action.payload
+                )
+                if covering_grant is not None:
+                    _, uses_left = self.grants.consume(covering_grant.id)
+                    self.journal.append(
+                        EventKind.GRANT_CONSUMED,
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        actor="GuardedExecutor",
+                        action_id=action.id,
+                        checkpoint_step=checkpoint_step,
+                        status="Consumed",
+                        description=f"Grant {covering_grant.id} consumed for {action.name} ({uses_left} uses left)",
+                        payload={
+                            "grant_id": covering_grant.id,
+                            "action_id": action.id,
+                            "uses_left": uses_left,
+                            "granted_by": covering_grant.granted_by,
+                        },
+                    )
+                else:
+                    tele.gated += 1
+                    self.journal.append(
+                        EventKind.GATE_REQUESTED,
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        actor="GuardedExecutor",
+                        action_id=action.id,
+                        checkpoint_step=checkpoint_step,
+                        status="Pending",
+                        description=f"HITL gate parked: {rule_id}",
+                        payload={"gate_id": gate.gate_id, "rule_id": rule_id},
+                    )
+                    return Pending(gate_request=gate)
+
+            elif approval is not None:
+                # Record human approver decision
                 self.journal.append(
-                    EventKind.GATE_REQUESTED,
+                    EventKind.GATE_DECIDED,
                     run_id=action.run_id,
                     thread_id=action.thread_id,
-                    actor="GuardedExecutor",
+                    actor=f"approver:{approval.decided_by}",
                     action_id=action.id,
                     checkpoint_step=checkpoint_step,
-                    status="Pending",
-                    description=f"HITL gate parked: {rule_id}",
-                    payload={"gate_id": gate.gate_id, "rule_id": rule_id},
+                    status=approval.verdict.value,
+                    description=f"Human {approval.verdict.value}d: {approval.reason}",
+                    payload={"gate_id": gate.gate_id, "reason": approval.reason, "verdict": approval.verdict.value},
                 )
-                return Pending(gate_request=gate)
 
-            # Record human approver decision
-            self.journal.append(
-                EventKind.GATE_DECIDED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor=f"approver:{approval.decided_by}",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status=approval.verdict.value,
-                description=f"Human {approval.verdict.value}d: {approval.reason}",
-                payload={"gate_id": gate.gate_id, "reason": approval.reason, "verdict": approval.verdict.value},
-            )
-
-            if approval.verdict != GateVerdict.APPROVE:
-                if action.kind == ActionKind.TOOL:
-                    tele.tool_calls += 1
-                return Denied(reason=f"Human denied: {approval.reason}", policy=rule_id)
+                if approval.verdict != GateVerdict.APPROVE:
+                    if action.kind == ActionKind.TOOL:
+                        tele.tool_calls += 1
+                    return Denied(reason=f"Human denied: {approval.reason}", policy=rule_id)
 
         # 5. Execution (Sandboxed or In-Process)
         start = time.monotonic()

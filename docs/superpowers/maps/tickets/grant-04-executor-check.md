@@ -1,7 +1,7 @@
 # Grant-04: Executor grant check + journal events
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: Grant-02, Grant-03 · Claim: _unclaimed_
+Blocked by: Grant-02, Grant-03 · Claim: `@me`
 
 ## Question
 
@@ -17,8 +17,8 @@ Wire grants into `GuardedExecutor.execute()`: a live covering grant on the `esca
 
 ## Done when
 
-- [ ] Escalate+grant → `Allowed` with `grant_consumed`; escalate alone → `Pending`; deny+grant → `Denied`.
-- [ ] Full `uv run pytest -q` green; mypy strict clean.
+- [x] Escalate+grant → `Allowed` with `grant_consumed`; escalate alone → `Pending`; deny+grant → `Denied`.
+- [x] Full `uv run pytest -q` green; mypy strict clean.
 
 ## Context pointers
 
@@ -27,4 +27,4 @@ Wire grants into `GuardedExecutor.execute()`: a live covering grant on the `esca
 
 ## Resolution
 
-_unresolved — agent: append behavior matrix results + verification output, then mark boxes._
+Wired grants checking into `GuardedExecutor.execute()` on the escalation/HITL path: active covering grant consumes one use, emits `grant_consumed` event, and continues to `Allowed` without parking. Without a covering grant, parks to `Pending` (`gate_requested`). Deny path strictly respects Lock 5 and never queries grants. Added `grant_issued`, `grant_consumed`, `grant_revoked`, `grant_expired` to `EventKind`. Added unit tests in `tests/test_executor.py` verifying full behavior matrix. All 300 tests pass (6 skipped); mypy strict clean (0 errors in 67 files).

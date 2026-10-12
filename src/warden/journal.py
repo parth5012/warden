@@ -32,6 +32,10 @@ class EventKind(str, Enum):
     ACTION_FAILED = "action_failed"
     CHECKPOINT_CREATED = "checkpoint_created"
     LEASE_EVALUATED = "lease_evaluated"
+    GRANT_ISSUED = "grant_issued"
+    GRANT_CONSUMED = "grant_consumed"
+    GRANT_REVOKED = "grant_revoked"
+    GRANT_EXPIRED = "grant_expired"
 
 
 class VerificationStatus(str, Enum):
