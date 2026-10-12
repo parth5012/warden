@@ -104,6 +104,52 @@
     </div>
 </div>
 
+<!-- Live Seam Evaluations (projected from the audit journal) -->
+<div class="audit-filter-panel" style="margin-bottom: 1.25rem;">
+    <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem;">
+        <span class="storage-mode-pill live"><span class="mode-dot"></span> LIVE SEAM CHECKS</span>
+        <span style="font-size: 0.78rem; color: var(--text-muted);">Every policy evaluation from agent chat turns, newest first</span>
+    </div>
+    {% if evaluations and evaluations|length > 0 %}
+    <div class="tactical-table-wrapper">
+        <table class="tactical-table">
+            <thead>
+                <tr>
+                    <th style="width: 170px;">TIME</th>
+                    <th style="width: 220px;">RULE</th>
+                    <th style="width: 90px;">LAYER</th>
+                    <th style="width: 120px;">VERDICT</th>
+                    <th>EVALUATION</th>
+                    <th style="width: 200px;">AGENT / ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in evaluations %}
+                <tr>
+                    <td class="font-mono" style="font-size: 0.72rem; color: var(--text-muted);">{{ ev.ts }}</td>
+                    <td class="font-mono text-cyan" style="font-weight: 600;">{{ ev.policy }}</td>
+                    <td>{{ ev.layer }}</td>
+                    <td>
+                        {% if ev.verdict == 'deny' %}
+                            <span class="action-pill pill-deny"><span class="pill-dot"></span> DENY</span>
+                        {% elif ev.verdict == 'escalate' %}
+                            <span class="action-pill pill-escalate"><span class="pill-dot"></span> ESCALATE</span>
+                        {% else %}
+                            <span class="action-pill pill-allow"><span class="pill-dot"></span> {{ ev.verdict|upper }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.8rem; color: var(--text-secondary);">{{ ev.reason }}</td>
+                    <td style="font-size: 0.75rem;"><span style="font-weight: 600;">{{ ev.actor }}</span> <span class="font-mono" style="color: var(--text-muted);">{{ ev.action_name }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">No seam evaluations yet this session — chat with an agent and its policy checks will appear here.</p>
+    {% endif %}
+</div>
+
 <!-- Filter & Search Controls Bar -->
 <div class="audit-filter-panel">
     <form

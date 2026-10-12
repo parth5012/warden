@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Interception Gate — Aegis{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h1 class="page-title">Interception Gate</h1>
+        <p class="page-subtitle">Approve or deny pending guarded LLM requests. Approval replays the original, immutable request once.</p>
+    </div>
+</section>
+
+{% if gates %}
+    {% for gate in gates %}
+    <section class="card-panel llm-card" style="margin-bottom: 1rem;">
+        <h2>{{ gate.action_name }}</h2>
+        <p>{{ gate.ask }}</p>
+        <dl class="llm-summary-grid">
+            <div><dt>Gate</dt><dd class="code-font">{{ gate.id }}</dd></div>
+            <div><dt>Thread</dt><dd class="code-font">{{ gate.thread_id }}</dd></div>
+            <div><dt>Model</dt><dd>{{ gate.payload.model }}</dd></div>
+            <div><dt>Created</dt><dd>{{ gate.created_at }}</dd></div>
+        </dl>
+        <p>Prompt contents and credentials are not displayed here.</p>
+        <form hx-post="/inbox/{{ gate.id }}/resolve" hx-target="#gate-result-{{ loop.index }}"
+              hx-swap="innerHTML">
+            <label for="approver-key-{{ loop.index }}">Approver key</label>
+            <input id="approver-key-{{ loop.index }}" name="approver_key" type="password"
+                   autocomplete="off" required>
+            <div class="llm-actions">
+                <button class="btn-action" type="submit" name="decision" value="approve">Approve and execute</button>
+                <button class="btn-action" type="submit" name="decision" value="deny">Deny without execution</button>
+            </div>
+        </form>
+        <div id="gate-result-{{ loop.index }}" aria-live="polite"></div>
+    </section>
+    {% endfor %}
+{% else %}
+    <section class="card-panel">
+        <p class="empty-state">No guarded LLM requests are waiting for approval.</p>
+    </section>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,8 @@
 import hashlib
+import html
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -9,16 +11,30 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.agents import router as agents_router
 from app.audit import router as audit_router
+from app.llm import router as guarded_llm_router
 from app.policies import router as policies_router
 from app.leases import router as leases_router
 from app.traces import router as traces_router
 from app.sandbox import router as sandbox_router
 from app.chat import router as chat_router
+from backend.api.health import router as health_api_router
+from backend.api.inbox import PENDING_GATES, router as inbox_api_router
+from backend.api.llm import router as llm_api_router
+from backend.api.policies import router as policies_api_router
+from backend.api.runs import launch_new_run, router as runs_api_router
+from backend.api.telemetry import router as telemetry_api_router
+from backend.api.audit import router as audit_api_router
+from backend.api.llm import get_llm_usage, is_groq_configured
+from backend.api.runs import list_runs
+from backend.api.telemetry import get_telemetry_summary
+from warden.journal import redact_secrets_in_obj
+from backend.api import get_audit_journal
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -32,9 +48,19 @@ app.include_router(policies_router)
 app.include_router(leases_router)
 app.include_router(traces_router)
 app.include_router(sandbox_router)
+app.include_router(guarded_llm_router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# Backend API is served by this same app; the /app UI above consumes it.
+app.include_router(health_api_router, prefix="/api")
+app.include_router(inbox_api_router, prefix="/api")
+app.include_router(runs_api_router, prefix="/api")
+app.include_router(audit_api_router, prefix="/api")
+app.include_router(telemetry_api_router, prefix="/api")
+app.include_router(policies_api_router, prefix="/api")
+app.include_router(llm_api_router, prefix="/api")
 
 
 # ==============================================================================
@@ -363,12 +389,146 @@ def build_dashboard_context(request: Request, active_page: str):
 
 
 @app.get("/")
-def get_dashboard(request: Request):
-    """Render the command center using the currently loaded demo records."""
+async def get_dashboard(request: Request):
+    """Render Command Center from the same journal and services as the backend API."""
+    telemetry = await get_telemetry_summary()
+    usage = await get_llm_usage(limit=10)
+    runs = (await list_runs()).get("runs", [])
+    events = await get_audit_journal().query()
+    pending_gates = list(PENDING_GATES.values())
+    activity_data = [
+        {
+            "time": (datetime.now(timezone.utc) - timedelta(hours=offset)).strftime("%H:%M"),
+            "allowed": 0,
+            "escalated": 0,
+            "denied": 0,
+        }
+        for offset in reversed(range(8))
+    ]
+
+    recent_actions = []
+    counts = {"allowed": 0, "escalated": 0, "denied": 0}
+    current_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    for event in events:
+        kind = str(event.kind).lower()
+        status_key = {
+            "action_completed": "allowed",
+            "action_allowed": "allowed",
+            "gate_requested": "escalated",
+            "action_denied": "denied",
+        }.get(kind)
+        if status_key is not None:
+            event_time = event.ts
+            if isinstance(event_time, str):
+                try:
+                    event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+                except ValueError:
+                    event_time = None
+            if isinstance(event_time, datetime):
+                if event_time.tzinfo is None:
+                    event_time = event_time.replace(tzinfo=timezone.utc)
+                hours_ago = int(
+                    (current_hour - event_time.astimezone(timezone.utc).replace(
+                        minute=0, second=0, microsecond=0
+                    )).total_seconds() // 3600
+                )
+                if 0 <= hours_ago < len(activity_data):
+                    activity_data[-1 - hours_ago][status_key] += 1
+        if kind in {"action_completed", "action_allowed"}:
+            counts["allowed"] += 1
+        elif kind == "gate_requested":
+            counts["escalated"] += 1
+        elif kind == "action_denied":
+            counts["denied"] += 1
+
+    for event in reversed(events[-10:]):
+        payload = redact_secrets_in_obj(event.payload or {})
+        status = {
+            "action_completed": "Allowed",
+            "action_allowed": "Allowed",
+            "gate_requested": "Escalated",
+            "action_denied": "Denied",
+            "action_failed": "Failed",
+        }.get(str(event.kind).lower(), str(event.kind).replace("_", " ").title())
+        recent_actions.append(
+            {
+                "title": str(payload.get("action") or payload.get("model") or event.kind),
+                "agent": str(event.actor or "system"),
+                "status": status,
+                "time_ago": event.ts.isoformat()
+                if isinstance(event.ts, datetime)
+                else str(event.ts or "—"),
+                "hash": str(event.action_id or event.id),
+            }
+        )
+
+    pending_llm_gates = [
+        gate for gate_id, gate in PENDING_GATES.items()
+        if gate.get("action_name", "").startswith("llm:")
+    ]
+    max_activity = max(
+        (bar["allowed"] + bar["escalated"] + bar["denied"] for bar in activity_data),
+        default=0,
+    )
+    for bar in activity_data:
+        bar["total"] = bar["allowed"] + bar["escalated"] + bar["denied"]
+        scale = 112 / max_activity if max_activity else 0
+        bar["allowed_height"] = round(bar["allowed"] * scale)
+        bar["escalated_height"] = round(bar["escalated"] * scale)
+        bar["denied_height"] = round(bar["denied"] * scale)
+    stats = {
+        "total": len(
+            {
+                event.action_id
+                for event in events
+                if event.action_id and event.kind != "llm_usage"
+            }
+        ),
+        "allowed": counts["allowed"],
+        "escalated": len(pending_gates),
+        "denied": counts["denied"],
+        "active_agents": sum(1 for run in runs if run.get("status") == "running"),
+        "total_tokens": int(telemetry.get("tokens_total", 0)),
+        "estimated_cost": float(telemetry.get("estimated_cost_usd", 0.0)),
+        "llm_calls": int(telemetry.get("llm_calls_total", 0)),
+        "avg_latency": float(telemetry.get("avg_latency_ms", 0.0)),
+        "pending_llm_gates": len(pending_llm_gates),
+    }
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context=build_dashboard_context(request, "dashboard"),
+        context={
+            "request": request,
+            "active_page": "dashboard",
+            "demo_mode": False,
+            "stats": stats,
+            "recent_actions": recent_actions,
+            "activity_data": activity_data,
+            "pending_actions": pending_gates,
+            "pending_count": len(pending_gates),
+            "recent_runs": runs[:8],
+            "llm_records": usage.get("records", []),
+            "groq_configured": is_groq_configured(),
+        },
+    )
+
+
+@app.post("/dashboard/runs")
+async def create_dashboard_run(prompt: str = Form(...)):
+    """Launch a task through the existing backend LangGraph run service."""
+    clean_prompt = prompt.strip()
+    if not clean_prompt:
+        raise HTTPException(status_code=400, detail="Enter a task prompt.")
+    run = await launch_new_run(clean_prompt)
+    return HTMLResponse(
+        content=(
+            '<div class="llm-result llm-result-info" role="status">'
+            f'Task started · thread <code>{html.escape(str(run["thread_id"]))}</code> · '
+            f'state {html.escape(str(run["status"]))}. '
+            '<a href="/api/runs">View run API</a></div>'
+        ),
+        headers={"HX-Trigger": "dashboard-updated"},
     )
 
 
@@ -398,4 +558,3 @@ def get_blast_radius(request: Request, action_id: str):
             "pending_count": len(ACTIONS_STORE),
         },
     )
-

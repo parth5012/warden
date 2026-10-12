@@ -157,6 +157,7 @@ class LLMUsageTelemetry:
     error_code: str | None = None
     error_detail: str | None = None
     correlation_id: str | None = None
+    actor: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_journal_payload(self) -> dict[str, Any]:
@@ -165,6 +166,7 @@ class LLMUsageTelemetry:
             "action_id": self.action_id,
             "run_id": self.run_id,
             "thread_id": self.thread_id,
+            "actor": self.actor,
             "correlation_id": self.correlation_id,
             "provider": self.provider,
             "model": self.model,

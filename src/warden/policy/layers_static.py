@@ -5,6 +5,7 @@ Zero dependencies, zero latency budget. Runs before any model.
 
 from __future__ import annotations
 
+from typing import Any
 import re
 
 # (pattern, policy_id) — keep small and obvious; semantic stuff belongs in L1/L2.
@@ -26,7 +27,7 @@ def find_static_violation(text: str) -> str | None:
     return None
 
 
-def action_text(name: str, payload: dict[str, object]) -> str:
+def action_text(name: str, payload: dict[str, Any]) -> str:
     """Flatten action name + payload values into searchable text."""
     parts = [name]
     for value in payload.values():

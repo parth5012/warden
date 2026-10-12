@@ -17,6 +17,8 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from app.projections import policy_trigger_counts, recent_policy_evaluations
+
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -211,6 +213,27 @@ async def get_policies_page(
         "active_count": sum(p["active"] for p in POLICIES_STORE),
     }
 
+    live_counts = policy_trigger_counts()
+    evaluations = recent_policy_evaluations(limit=10)
+
+    # When the catalog is filtered, scope the live feed to the visible rules
+    # so the panel never contradicts its own filter contract.
+    filtering = (tier and tier.lower() != "all") or (action and action.lower() != "all") or q
+    if filtering:
+        visible_ids = {p["id"] for p in filtered}
+        query = (q or "").strip().lower()
+
+        def _visible(ev: dict[str, object]) -> bool:
+            if str(ev.get("policy", "")) not in visible_ids:
+                return False
+            if query and query not in " ".join(
+                str(ev.get(k, "")) for k in ("policy", "reason", "action_name")
+            ).lower():
+                return False
+            return True
+
+        evaluations = [ev for ev in evaluations if _visible(ev)]
+
     context = {
         "request": request,
         "active_page": "policies",
@@ -220,6 +243,10 @@ async def get_policies_page(
         "selected_action": action or "all",
         "q": q or "",
         "demo_mode": True,
+        # Live seam activity projected from the audit journal: recent checks
+        # plus per-rule hit counts layered over the catalog baselines.
+        "evaluations": evaluations,
+        "live_counts": live_counts,
     }
 
     if request.headers.get("HX-Request"):

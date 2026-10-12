@@ -14,10 +14,16 @@ router = APIRouter(prefix="/policies", tags=["Policies"])
 class PolicyCreateRequest(BaseModel):
     name: str = Field(..., description="Unique policy identifier")
     action: Literal["allow", "escalate", "deny"] = Field(
-        ..., description="Verdict: allow, escalate, or deny"
+        ..., description="Verdict: allow, escalate, deny"
     )
     description: str = Field(..., description="Human-readable rule explanation")
     rule_text: str | None = Field(default=None, description="Rule definition")
+
+
+class PolicyEvaluateRequest(BaseModel):
+    action_name: str = Field(..., description="Action name, e.g. db.query, shell.exec, email.send, llm.prompt")
+    payload: dict[str, Any] = Field(default_factory=dict, description="Action payload parameters")
+    role: str = Field(default="operator", description="Caller role")
 
 
 POLICIES_STORE: list[dict[str, Any]] = [
@@ -87,3 +93,26 @@ async def create_policy(
     }
     POLICIES_STORE.append(new_policy)
     return new_policy
+
+
+@router.post("/evaluate")
+async def evaluate_policy(body: PolicyEvaluateRequest) -> dict[str, Any]:
+    """Evaluate an action through the 3-layer PolicyEngine (L0 -> L1 -> L2)."""
+    from warden.policy.engine import PolicyEngine, PolicyError
+
+    engine = PolicyEngine()
+    try:
+        verdict = engine.evaluate(
+            action_name=body.action_name,
+            payload=body.payload,
+            role=body.role,
+        )
+        return {
+            "decision": verdict.decision.value,
+            "reason": verdict.reason,
+            "policy": verdict.policy,
+            "layer": verdict.layer,
+            "scores": verdict.scores,
+        }
+    except PolicyError as exc:
+        raise HTTPException(status_code=503, detail=f"Governance unavailable: {exc}")

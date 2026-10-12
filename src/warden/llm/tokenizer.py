@@ -52,6 +52,9 @@ DEFAULT_CONTEXT_WINDOWS: dict[str, int] = {
     "gemini-1.5-pro": 2_000_000,
     "gemini-1.5-flash": 1_000_000,
     "gemini-2.0-flash": 1_000_000,
+    # Groq-hosted GPT-OSS models
+    "openai/gpt-oss-20b": 131_072,
+    "openai/gpt-oss-120b": 131_072,
 }
 
 # Known model to tiktoken encoding mappings
@@ -69,6 +72,8 @@ DEFAULT_ENCODING_MAP: dict[str, str] = {
     "gpt-4-32k": "cl100k_base",
     "gpt-3.5-turbo": "cl100k_base",
     "gpt-3.5-turbo-16k": "cl100k_base",
+    "openai/gpt-oss-20b": "o200k_base",
+    "openai/gpt-oss-120b": "o200k_base",
 }
 
 

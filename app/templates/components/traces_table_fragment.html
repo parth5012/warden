@@ -8,7 +8,7 @@
                     <th style="width: 140px;">AGENT</th>
                     <th>WORKFLOW NODE PIPELINE</th>
                     <th style="width: 170px;">THREAD STATUS</th>
-                    <th style="width: 130px;">LATENCY & TOKENS</th>
+                    <th style="width: 150px;">LATENCY · TOKENS · COST</th>
                     <th style="width: 110px; text-align: right;">INSPECTOR</th>
                 </tr>
             </thead>
@@ -70,6 +70,11 @@
                             <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">
                                 {{ trace.total_tokens }} tokens
                             </span>
+                            {% if trace.total_cost_usd is defined %}
+                            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">
+                                ${{ "%.6f"|format(trace.total_cost_usd) }}
+                            </span>
+                            {% endif %}
                         </div>
                     </td>
                     <td style="text-align: right;">

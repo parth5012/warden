@@ -146,7 +146,12 @@ async def test_get_system_metrics_through_guarded_executor() -> None:
 
     events = await journal.query()
     kinds = [e.kind for e in events]
-    assert kinds == ["action_requested", "action_completed"]
+    assert kinds == [
+        "action_requested",
+        "policy_evaluated",
+        "execution_started",
+        "action_completed",
+    ]
 
 
 # ===========================================================================

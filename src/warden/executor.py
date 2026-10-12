@@ -17,10 +17,17 @@ from __future__ import annotations
 import inspect
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Awaitable, Callable
 
-from warden.journal import AuditJournal, JournalEvent, redact_secrets_in_obj
+from warden.journal import (
+    AsyncAuditJournal,
+    AuditJournal,
+    InMemoryJournal,
+    JournalEvent,
+    redact_secrets_in_obj,
+)
+from warden.config import get_clef_client
 from warden.models import (
     Action,
     ActionKind,
@@ -43,6 +50,7 @@ from warden.llm.types import BudgetConfig
 from warden.llm.client import GuardedLLMClient, LLMExecutionResult
 
 logger = logging.getLogger("warden.executor")
+_DEFAULT_POLICY = object()
 
 
 @dataclass(frozen=True)
@@ -87,8 +95,8 @@ class GuardedExecutor:
 
     def __init__(
         self,
-        journal: AuditJournal | None = None,
-        policy: PolicyEngine | None = None,
+        journal: AsyncAuditJournal | AuditJournal | None = None,
+        policy: PolicyEngine | None | object = _DEFAULT_POLICY,
         sandbox: Any | None = None,
         llm_client: Any | None = None,
         *,
@@ -99,13 +107,52 @@ class GuardedExecutor:
         approver_keys: Any | None = None,
     ) -> None:
         self.journal = journal
-        self.policy_engine = policy if policy is not None else policy_engine
+        if policy is _DEFAULT_POLICY:
+            self.policy_engine = (
+                policy_engine
+                if policy_engine is not None
+                else PolicyEngine(
+                    clef=get_clef_client(),
+                    fallback_to_layers=True,
+                )
+            )
+        else:
+            self.policy_engine = policy if policy is not None else policy_engine
+        self.policy = self.policy_engine
         self.sandbox = sandbox
         self.llm_client = llm_client
         self.registry = registry if registry is not None else HandlerRegistry()
+        if registry is None:
+            from warden.tools.registry import register_tools
+
+            register_tools(self)
         self.approval_store = approval_store
         self.approver_keys = approver_keys or {}
         self.require_audit = require_audit
+
+    async def _append_journal_event(self, event: JournalEvent) -> None:
+        if self.journal is None:
+            return
+
+        append = getattr(self.journal, "append")
+        if isinstance(self.journal, InMemoryJournal):
+            result = append(
+                event.kind,
+                run_id=event.run_id,
+                thread_id=event.thread_id,
+                actor=event.actor or "",
+                action_id=event.action_id,
+                checkpoint_step=event.checkpoint_step,
+                status=event.status,
+                description=event.description,
+                payload=event.payload,
+            )
+        else:
+            if event.actor is None:
+                event = replace(event, actor="")
+            result = append(event)
+        if inspect.isawaitable(result):
+            await result
 
     def register_handler(
         self,
@@ -179,21 +226,14 @@ class GuardedExecutor:
         if validation_error is not None:
             return validation_error
 
-        # Step 3: Resolve handler without executing it
-        handler = self._resolve_handler(action)
-        if handler is None:
-            return Error(
-                reason=f"Missing handler: no registered handler for {action.kind.value} action '{action.name}'"
-            )
-
-        # Step 4: Validate PolicyEngine is available
+        # Step 3: Validate PolicyEngine is available
         if self.policy_engine is None:
             # Missing policy engine never triggers unguarded fallback!
             return Error(reason="governance_unavailable")
 
         context_obj = self._normalize_ctx(ctx, action)
 
-        # Step 5: Write-ahead audit journal (action_requested)
+        # Step 4: Write-ahead audit journal (action_requested)
         if self.journal is not None:
             try:
                 audit_payload: dict[str, Any]
@@ -206,7 +246,7 @@ class GuardedExecutor:
                 else:
                     audit_payload = action.payload
                 safe_payload = redact_secrets_in_obj(audit_payload)
-                await self.journal.append(
+                await self._append_journal_event(
                     JournalEvent(
                         id=str(uuid.uuid4()),
                         run_id=action.run_id,
@@ -229,7 +269,7 @@ class GuardedExecutor:
         elif self.require_audit:
             return Error(reason="governance_unavailable")
 
-        # Step 6: Policy evaluation
+        # Step 5: Policy evaluation
         try:
             policy_result = await self.policy_engine.evaluate(action, context_obj)
         except PolicyError as exc:
@@ -246,12 +286,46 @@ class GuardedExecutor:
                 reason="Invalid policy decision: malformed result from policy engine"
             )
 
-        # Step 7: Decision enforcement
+        if self.journal is not None:
+            try:
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="policy_evaluated",
+                        actor=context_obj.actor,
+                        status=policy_result.decision.value,
+                        description=policy_result.reason,
+                        payload={
+                            "policy": action.payload.get("policy_id")
+                            or policy_result.policy_name
+                            or "default",
+                            "layer": action.payload.get("policy_layer", "L1"),
+                            "verdict": policy_result.decision.value,
+                            "reason": policy_result.reason,
+                        },
+                    )
+                )
+            except Exception as exc:
+                logger.error("Journal policy_evaluated failed: %s", redact_secrets_in_obj(str(exc)))
+                return Error(reason="governance_unavailable")
+
+        # Step 6: Decision enforcement
         # 7a: DENY is terminal! Even with an approval object, terminal DENY cannot be overridden.
         if policy_result.decision == PolicyDecision.DENY:
+            if (
+                policy_result.policy_name is None
+                and self._resolve_handler(action) is None
+            ):
+                return Error(
+                    reason=f"Missing handler: no registered handler for {action.kind.value} action '{action.name}'"
+                )
             if self.journal is not None:
                 try:
-                    await self.journal.append(
+                    await self._append_journal_event(
                         JournalEvent(
                             id=str(uuid.uuid4()),
                             run_id=action.run_id,
@@ -316,11 +390,14 @@ class GuardedExecutor:
                     context={
                         "reason": policy_result.reason,
                         "policy": policy_result.policy_name or "",
+                        "rule_id": action.payload.get("policy_id")
+                        or policy_result.policy_name
+                        or "",
                     },
                 )
                 if self.journal is not None:
                     try:
-                        await self.journal.append(
+                        await self._append_journal_event(
                             JournalEvent(
                                 id=str(uuid.uuid4()),
                                 run_id=action.run_id,
@@ -419,7 +496,7 @@ class GuardedExecutor:
             if approval.verdict == GateVerdict.DENY:
                 if self.journal is not None:
                     try:
-                        await self.journal.append(
+                        await self._append_journal_event(
                             JournalEvent(
                                 id=str(uuid.uuid4()),
                                 run_id=action.run_id,
@@ -450,7 +527,7 @@ class GuardedExecutor:
             # Human approved: record gate_decided and proceed to execution
             if self.journal is not None:
                 try:
-                    await self.journal.append(
+                    await self._append_journal_event(
                         JournalEvent(
                             id=str(uuid.uuid4()),
                             run_id=action.run_id,
@@ -471,7 +548,39 @@ class GuardedExecutor:
                     logger.error("Journal gate_decided failed: %s", redact_secrets_in_obj(str(exc)))
                     return Error(reason="governance_unavailable")
 
-        # Step 8: Execute handler (Only reached on valid ALLOW or approved ESCALATE)
+        # Resolve tool handlers only after policy has allowed the action or
+        # an operator has approved it. DENY and ESCALATE must not depend on
+        # an executable handler being registered.
+        handler = None if action.kind == ActionKind.LLM else self._resolve_handler(action)
+        if action.kind != ActionKind.LLM and handler is None:
+            return Error(
+                reason=f"Missing handler: no registered handler for {action.kind.value} action '{action.name}'"
+            )
+
+        if self.journal is not None:
+            try:
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="execution_started",
+                        actor=context_obj.actor,
+                        status="running",
+                        description=f"Execution started for {action.name}",
+                        payload={
+                            "action_name": action.name,
+                            "route": "sandbox" if self.sandbox is not None else "in-process",
+                        },
+                    )
+                )
+            except Exception as exc:
+                logger.error("Journal execution_started failed: %s", redact_secrets_in_obj(str(exc)))
+                return Error(reason="governance_unavailable")
+
+        # Step 7: Execute handler (Only reached on valid ALLOW or approved ESCALATE)
         try:
             if action.kind == ActionKind.LLM:
                 # LLM actions are routed exclusively through GuardedLLMClient
@@ -490,7 +599,7 @@ class GuardedExecutor:
             logger.error("Handler error during execution of %s: %s", action.name, safe_error)
             if self.journal is not None:
                 try:
-                    await self.journal.append(
+                    await self._append_journal_event(
                         JournalEvent(
                             id=str(uuid.uuid4()),
                             run_id=action.run_id,
@@ -512,7 +621,7 @@ class GuardedExecutor:
         # Step 9: Final audit event and return Allowed
         if self.journal is not None:
             try:
-                await self.journal.append(
+                await self._append_journal_event(
                     JournalEvent(
                         id=str(uuid.uuid4()),
                         run_id=action.run_id,

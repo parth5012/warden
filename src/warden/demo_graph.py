@@ -72,6 +72,8 @@ def abort_node(state: DemoState) -> dict[str, Any]:
 def build_demo_graph(
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     executor: GuardedExecutor | None = None,
+    llm_provider: str = "openai",
+    llm_model: str = "gpt-4o",
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
     """Compile the demo graph with the given checkpointer and optional GuardedExecutor.
 
@@ -97,12 +99,13 @@ def build_demo_graph(
         action = Action(
             id=f"{thread_id}:llm-draft",
             kind=ActionKind.LLM,
-            name="gpt-4o",
+            name=llm_model,
             payload={
-                "model": "gpt-4o",
-                "provider": "openai",
+                "model": llm_model,
+                "provider": llm_provider,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 128,
+                "agent": "Agent Runner",
             },
             run_id=f"demo-run:{thread_id}",
             thread_id=thread_id,

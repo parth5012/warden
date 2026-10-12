@@ -1,0 +1,133 @@
+.llm-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    gap: 1.25rem;
+}
+
+.llm-card {
+    padding: 1.35rem;
+}
+
+.llm-card h2 {
+    margin: 0 0 0.35rem;
+}
+
+.llm-card p {
+    color: var(--text-muted);
+}
+
+.llm-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.llm-card label {
+    display: block;
+    margin-bottom: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.llm-card input,
+.llm-card select,
+.llm-card textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.7rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.llm-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.llm-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.llm-check input {
+    width: auto;
+}
+
+.llm-result {
+    margin: 1rem 0;
+    padding: 0.9rem 1rem;
+    border-left: 4px solid var(--color-cyan);
+    border-radius: 6px;
+    background: var(--bg-surface);
+}
+
+.llm-result p {
+    margin: 0.45rem 0;
+}
+
+.llm-result pre {
+    overflow: auto;
+    padding: 0.8rem;
+    border-radius: 5px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.llm-result-success {
+    border-color: var(--color-emerald);
+}
+
+.llm-result-error {
+    border-color: var(--color-ruby);
+}
+
+.llm-result-pending {
+    border-color: var(--color-amber);
+}
+
+.llm-result-info {
+    border-color: var(--color-cyan);
+}
+
+.llm-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.llm-summary-grid div {
+    padding: 0.8rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+}
+
+.llm-summary-grid dt {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.llm-summary-grid dd {
+    margin: 0.3rem 0 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+@media (max-width: 900px) {
+    .llm-workspace {
+        grid-template-columns: 1fr;
+    }
+}

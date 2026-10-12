@@ -227,6 +227,21 @@ def test_pricing_exact_match_precedence() -> None:
     assert tier.output_cost_per_million == Decimal("10.00")
 
 
+def test_groq_model_preflight_and_pricing_are_available() -> None:
+    registry = PricingRegistry()
+    tier, is_exact = registry.resolve_tier("groq", "openai/gpt-oss-20b")
+    estimate = TokenEstimator().estimate_text_tokens(
+        "Estimate this Groq prompt.", model="openai/gpt-oss-20b"
+    )
+
+    assert tier is not None
+    assert is_exact is True
+    assert tier.input_cost_per_million == Decimal("0.075")
+    assert tier.output_cost_per_million == Decimal("0.30")
+    assert estimate.is_supported is True
+    assert estimate.estimated_tokens is not None
+
+
 def test_pricing_pattern_matching_fallback() -> None:
     """Dated checkpoint model name must match regex pattern tier."""
     registry = PricingRegistry()
@@ -386,10 +401,14 @@ async def test_rate_limiter_non_retryable_error() -> None:
 
 def test_secret_redaction() -> None:
     """Sensitive API keys and bearer tokens must be stripped from messages."""
-    raw = "Request failed with bearer sk-abcdef12345678901234567890 and key=secret1234567890"
+    raw = (
+        "Request failed with bearer sk-abcdef12345678901234567890, "
+        "gsk_abcdef12345678901234567890, and key=secret1234567890"
+    )
     clean = redact_secrets(raw)
 
     assert "sk-abcdef" not in clean
+    assert "gsk_abcdef" not in clean
     assert "secret1234567890" not in clean
     assert "[REDACTED_SECRET]" in clean
 
@@ -693,6 +712,8 @@ async def test_emit_telemetry_on_exhausted_rate_limit_failure() -> None:
     assert p["error_code"] == "RetryableProviderError"
     assert "Persistent 429" in (p["error_detail"] or "")
     assert p["retry_count"] == 2
+    assert p["estimated_cost_usd"] is not None
+    assert p["calculated_cost_usd"] is None
 
 
 @pytest.mark.asyncio
@@ -1009,6 +1030,15 @@ async def test_openai_adapter_uses_modern_async_client_without_internal_retries(
     assert captured["client"]["max_retries"] == 0
     assert captured["request"]["model"] == "gpt-4o"
     assert captured["request"]["max_tokens"] == 12
+
+    await adapter.invoke(
+        LLMRequest(
+            model="openai/gpt-oss-20b",
+            provider="groq",
+            messages=[{"role": "user", "content": "hello"}],
+        )
+    )
+    assert captured["request"]["model"] == "openai/gpt-oss-20b"
 
 
 @pytest.mark.asyncio

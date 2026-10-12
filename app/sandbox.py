@@ -17,6 +17,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from app.projections import live_sandbox_runs
+
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -137,8 +139,17 @@ async def get_sandbox_page(
     tool: Optional[str] = Query("all", description="Tool filter: all, sql_query, run_shell, run_code, write_file"),
     q: Optional[str] = Query(None, description="Search query"),
 ):
-    """Render Sandbox Runs execution console."""
-    filtered = list(SANDBOX_RUNS_STORE)
+    """Render Sandbox Runs execution console.
+
+    Live rows are projected from the audit journal (anything executed through
+    the seam, e.g. agent chat turns) and listed first; seeded demo rows fill
+    out the history. A seeded row shadowed by a live row for the same action
+    is skipped to avoid duplicates.
+    """
+    live_runs = live_sandbox_runs()
+    shadowed = {run["action_id"] for run in live_runs if run["action_id"]}
+    all_runs = live_runs + [r for r in SANDBOX_RUNS_STORE if r["action_id"] not in shadowed]
+    filtered = list(all_runs)
 
     if status and status.lower() != "all":
         filtered = [r for r in filtered if r["status"].lower() == status.lower()]
@@ -158,12 +169,12 @@ async def get_sandbox_page(
         ]
 
     metrics = {
-        "total_runs": len(SANDBOX_RUNS_STORE),
-        "success_count": sum(r["status"] == "SUCCESS" for r in SANDBOX_RUNS_STORE),
-        "failed_count": sum(r["status"] == "FAILED" for r in SANDBOX_RUNS_STORE),
-        "total_secrets_scrubbed": sum(r["scrubbed_secrets_count"] for r in SANDBOX_RUNS_STORE),
-        "avg_duration": int(sum(r["duration_ms"] for r in SANDBOX_RUNS_STORE) / max(1, len(SANDBOX_RUNS_STORE))),
-        "peak_memory_max": max(r["peak_memory_mb"] for r in SANDBOX_RUNS_STORE),
+        "total_runs": len(all_runs),
+        "success_count": sum(r["status"] == "SUCCESS" for r in all_runs),
+        "failed_count": sum(r["status"] == "FAILED" for r in all_runs),
+        "total_secrets_scrubbed": sum(r["scrubbed_secrets_count"] for r in all_runs),
+        "avg_duration": int(sum(r["duration_ms"] for r in all_runs) / max(1, len(all_runs))),
+        "peak_memory_max": max([r["peak_memory_mb"] for r in all_runs] + [0]),
     }
 
     context = {
@@ -194,7 +205,10 @@ async def get_sandbox_page(
 @router.get("/sandbox/{run_id}/logs", response_class=HTMLResponse)
 async def get_sandbox_logs(request: Request, run_id: str):
     """Return tactical terminal drawer with stdout/stderr logs."""
-    run = next((r for r in SANDBOX_RUNS_STORE if r["id"] == run_id), None)
+    live_runs = live_sandbox_runs()
+    shadowed = {run["action_id"] for run in live_runs if run["action_id"]}
+    all_runs = live_runs + [r for r in SANDBOX_RUNS_STORE if r["action_id"] not in shadowed]
+    run = next((r for r in all_runs if r["id"] == run_id), None)
     if not run:
         raise HTTPException(status_code=404, detail="Sandbox run not found")
 

@@ -30,6 +30,7 @@ from warden.hitl.approvals import (
     load_approver_keys_from_env,
 )
 from warden.llm.client import GuardedLLMClient, LLMExecutionResult
+from warden.config import settings
 from warden.llm.providers import OpenAIProviderAdapter, ProviderPermanentError
 from warden.llm.types import LLMRequest
 from warden.models import (
@@ -127,11 +128,31 @@ _llm_policy_engine = PolicyEngine(
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# The OpenAI adapter and its credential lookup are lazy; a missing key fails
-# closed only when an allowed action reaches the provider boundary.
+# Groq's OpenAI-compatible API uses the shared, tested provider adapter.
+# Credentials are resolved only when an allowed action reaches the provider.
 
 # Preflight tokenizer used for request token estimation and context windows.
 _estimator = TokenEstimator()
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODELS = (
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+)
+
+
+def _groq_api_key() -> str | None:
+    env_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    if settings.groq_api_key is not None:
+        return settings.groq_api_key.get_secret_value().strip() or None
+    return None
+
+
+def is_groq_configured() -> bool:
+    """Report whether a Groq credential is available without exposing it."""
+    return bool(_groq_api_key())
 
 
 def is_openai_configured() -> bool:
@@ -139,22 +160,35 @@ def is_openai_configured() -> bool:
     return bool(os.environ.get("OPENAI_API_KEY", "").strip())
 
 
-async def _openai_provider_caller(request: LLMRequest) -> Any:
-    """Resolve credentials lazily and invoke the sole configured provider."""
-    if request.provider.lower() != "openai":
-        raise ProviderPermanentError(
-            f"Unsupported provider '{request.provider}'; only OpenAI is configured"
+async def _provider_caller(request: LLMRequest) -> Any:
+    """Resolve provider credentials lazily and call the selected adapter."""
+    provider = request.provider.lower()
+    if provider == "groq":
+        api_key = _groq_api_key()
+        if not api_key:
+            raise ProviderPermanentError(
+                "GROQ_API_KEY is not configured; add it to backend/.env or the server environment"
+            )
+        adapter = OpenAIProviderAdapter(
+            api_key=api_key,
+            base_url=GROQ_BASE_URL,
+            request_timeout_s=request.timeout_s,
         )
-    adapter = OpenAIProviderAdapter.from_settings(
-        request_timeout_s=request.timeout_s
-    )
+    elif provider == "openai":
+        adapter = OpenAIProviderAdapter.from_settings(
+            request_timeout_s=request.timeout_s
+        )
+    else:
+        raise ProviderPermanentError(
+            f"Unsupported provider '{request.provider}'; configured providers are Groq and OpenAI"
+        )
     return await adapter.invoke(request)
 
 _client = GuardedLLMClient(
-    provider_caller=_openai_provider_caller,
+    provider_caller=_provider_caller,
     tokenizer=_estimator,
     telemetry_sink=_llm_usage_telemetry_sink,
-    default_provider="openai",
+    default_provider="groq",
 )
 _llm_approval_store = InMemoryApprovalStore()
 _pending_llm_actions: dict[str, Action] = {}
@@ -408,6 +442,8 @@ async def invoke_llm(body: LLMInvokeRequest) -> Any:
         },
         "cost": cost.to_dict() if cost else None,
         "error_code": result.error_code,
+        "error_detail": result.error_detail,
+        "completion": result.result if result.is_success else None,
     }
 
 
@@ -458,6 +494,10 @@ async def get_llm_usage(limit: int = 50) -> dict[str, Any]:
             "total_tokens": total_tokens,
             "estimated_total_cost_usd": round(total_cost, 6),
             "avg_latency_ms": round(avg_latency, 1),
+            "cost_source_note": (
+                "Costs are calculated locally from the versioned pricing catalog; "
+                "they are not provider billing statements."
+            ),
             "source_note": (
                 "Token counts are provider-reported when a provider is configured, "
                 "otherwise tiktoken estimates."
