@@ -1,4 +1,4 @@
-# DECISIONS.md — Warden
+# DECISIONS.md — Aegis
 
 One entry per decision that reopens, amends, or adds to the locks in `CONTEXT.md`. Pre-map locks 1–12 remain recorded in `CONTEXT.md`; this file starts from the first reopen (2026-10-11).
 
@@ -47,7 +47,7 @@ Static rules alone miss contextual prompt injection, natural language jailbreaks
 - *Upstream Proxy / Gateway (outside GuardedExecutor):* Rejected. Violates Lock 1 (single seam) and Lock 3 (write-ahead journal idempotency before execution).
 
 **Consequences.**
-- Model evaluation runs inside `policy.evaluate()` or via a local inference sidecar container; Warden kernel remains lightweight Python without direct PyTorch dependencies.
+- Model evaluation runs inside `policy.evaluate()` or via a local inference sidecar container; Aegis kernel remains lightweight Python without direct PyTorch dependencies.
 - Fail-closed invariant preserved: Sidecar timeout or crash returns `Error("governance_unavailable")`.
 - Terminal DENY invariant preserved: Any layer issuing `deny` immediately appends `action_denied` to `AuditJournal` and aborts.
 - Documented in `docs/LAYERED_SAFETY_ARCHITECTURE.md`.

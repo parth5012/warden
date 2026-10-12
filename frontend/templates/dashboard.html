@@ -9,11 +9,14 @@
     <p class="page-desc">Real-time telemetry, agent activity, and governance gates overview.</p>
   </div>
   <div>
-    <button class="btn btn-secondary" hx-get="/api/telemetry" hx-swap="none">Refresh Metrics</button>
+    <button class="btn btn-secondary" hx-get="/partials/telemetry/stats" hx-target="#stats-panel" hx-swap="outerHTML">
+      Refresh Metrics
+    </button>
   </div>
 </div>
 
-<div class="grid-stats">
+<!-- Live Metric Cards -->
+<div id="stats-panel" class="grid-stats" hx-get="/partials/telemetry/stats" hx-trigger="every 10s" hx-swap="outerHTML">
   <div class="card">
     <div class="stat-label">Pending HITL Gates</div>
     <div class="stat-value" style="color: var(--amber);">{{ stats.pending_gates|default(0) }}</div>
@@ -27,7 +30,7 @@
   <div class="card">
     <div class="stat-label">Total Tokens</div>
     <div class="stat-value">{{ stats.total_tokens|default(0) }}</div>
-    <div class="stat-meta">Groq LLM telemetry</div>
+    <div class="stat-meta">Guarded LLM telemetry</div>
   </div>
   <div class="card">
     <div class="stat-label">Est. Cost (USD)</div>
@@ -36,9 +39,92 @@
   </div>
 </div>
 
-<div style="margin-bottom: 2rem;">
-  <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">Recent Agent Runs</h2>
-  <div class="table-container">
+<!-- Interactive Guarded LLM & Token Inspector -->
+<div style="margin-bottom: 2.5rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700;">Guarded LLM Client & Token Meter</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+        Test LLM prompts through Aegis's PolicyEngine with preflight token estimation (tiktoken) and policy enforcement.
+      </p>
+    </div>
+    <div>
+      <span class="badge badge-allowed" style="font-family: var(--font-mono);">PolicyEngine Active</span>
+    </div>
+  </div>
+
+  <div class="card" style="padding: 1.5rem;">
+    {% if not openai_configured %}
+    <div role="status" style="border-left: 4px solid var(--amber); background: var(--bg-secondary); padding: 0.85rem 1rem; margin-bottom: 1rem; border-radius: 6px;">
+      <strong style="color: var(--amber);">OpenAI provider is not configured.</strong>
+      <span style="color: var(--text-muted);">Add <code>OPENAI_API_KEY</code> to the environment used to start Aegis and restart the backend. Token estimates work, but provider calls cannot return completions until it is configured.</span>
+    </div>
+    {% endif %}
+    <form id="llm-guard-form">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+        <div>
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+            Model Target
+          </label>
+          <select name="model" id="llm-model-select" style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-main); padding: 0.6rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.9rem;">
+            <option value="gpt-4o">gpt-4o (OpenAI &bull; 128k context)</option>
+            <option value="gpt-4o-mini">gpt-4o-mini (OpenAI &bull; 128k context)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+            Max Output Tokens (Budget Cap)
+          </label>
+          <input type="number" name="max_tokens" value="512" min="1" max="4096" style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-main); padding: 0.6rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.9rem;">
+        </div>
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem;">
+          Prompt / Instructions
+        </label>
+        <textarea name="prompt" rows="3" placeholder="Enter prompt or test safety policy (e.g., 'Summarize team metrics' vs sensitive keywords like 'external email' or prohibited 'bypass security')..." style="width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-main); padding: 0.75rem; border-radius: 6px; font-family: var(--font-sans); font-size: 0.9rem; resize: vertical;">Summarize daily operations telemetry and compute system resource efficiency.</textarea>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-muted); cursor: pointer;">
+          <input type="checkbox" name="require_approval" value="true">
+          <span>Require Explicit Human Approval (Park in Operator Inbox)</span>
+        </label>
+
+        <div style="display: flex; gap: 0.75rem;">
+          <button type="button" class="btn btn-secondary" hx-post="/partials/llm/estimate" hx-include="#llm-guard-form" hx-target="#llm-response-slot">
+            Estimate Tokens (tiktoken)
+          </button>
+          <button type="button" class="btn btn-primary" hx-post="/partials/llm/invoke" hx-include="#llm-guard-form" hx-target="#llm-response-slot">
+            Execute Guarded Action
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Response Slot -->
+    <div id="llm-response-slot"></div>
+  </div>
+</div>
+
+<!-- Recent Agent Runs -->
+<div style="margin-bottom: 2.5rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700;">Recent Agent Runs</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+        LangGraph checkpoint-backed agent executions with human-in-the-loop gates.
+      </p>
+    </div>
+    <!-- Quick Launcher for Agent Run -->
+    <form hx-post="/partials/runs/create" hx-target="#recent-runs-table-container" hx-swap="outerHTML" style="display: flex; gap: 0.5rem; align-items: center;">
+      <input type="text" name="prompt" placeholder="Launch agent task (e.g. 'Draft ops incident report')..." style="padding: 0.5rem 0.75rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); font-size: 0.85rem; width: 280px;" required>
+      <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 0.85rem; white-space: nowrap;">+ Launch Agent</button>
+    </form>
+  </div>
+
+  <div id="recent-runs-table-container" class="table-container" hx-get="/partials/runs/table" hx-trigger="every 5s, refresh-runs from:body" hx-swap="outerHTML">
     <table>
       <thead>
         <tr>
@@ -77,6 +163,10 @@
             </td>
             <td>
               <a href="/runs/{{ run.thread_id }}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Inspect</a>
+              {% if run.is_parked %}
+                <button class="btn btn-approve" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; margin-left: 0.4rem;" hx-post="/partials/runs/{{ run.thread_id }}/resume" hx-vals='{"decision": "approve"}' hx-target="#recent-runs-table-container" hx-swap="outerHTML">Approve</button>
+                <button class="btn btn-deny" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; margin-left: 0.25rem;" hx-post="/partials/runs/{{ run.thread_id }}/resume" hx-vals='{"decision": "deny"}' hx-target="#recent-runs-table-container" hx-swap="outerHTML">Deny</button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -84,7 +174,7 @@
           <tr>
             <td colspan="5" class="empty-state">
               <div class="empty-state-title">No runs recorded yet</div>
-              <p>Run a task through the ops assistant or CLI harness to generate telemetry.</p>
+              <p>Launch an agent task above to generate execution checkpoints.</p>
             </td>
           </tr>
         {% endif %}
@@ -92,4 +182,77 @@
     </table>
   </div>
 </div>
+
+<!-- Recent LLM Telemetry Records -->
+<div style="margin-bottom: 2rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <div>
+      <h2 style="font-size: 1.25rem; font-weight: 700;">Live LLM Telemetry Stream</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.2rem;">
+        Real-time audit stream of tokens, models, latency, and policy evaluations.
+      </p>
+    </div>
+    <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;" hx-get="/partials/llm/stream" hx-target="#llm-stream-table-container" hx-swap="outerHTML">
+      Refresh Stream
+    </button>
+  </div>
+
+  <div id="llm-stream-table-container" class="table-container" hx-get="/partials/llm/stream" hx-trigger="every 5s, refresh-stream from:body" hx-swap="outerHTML">
+    <table>
+      <thead>
+        <tr>
+          <th>Action ID</th>
+          <th>Model</th>
+          <th>Input Tokens</th>
+          <th>Output Tokens</th>
+          <th>Status</th>
+          <th>Result / Error</th>
+          <th>Recorded At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if recent_llm_records %}
+          {% for r in recent_llm_records %}
+          <tr>
+            <td style="font-family: var(--font-mono); font-size: 0.85rem;">{{ r.action_id }}</td>
+            <td><span class="badge badge-allowed">{{ r.model }}</span></td>
+            <td style="font-family: var(--font-mono); color: var(--cyan); font-weight: 600;">
+              {% if r.prompt_tokens is defined and r.prompt_tokens is not none %}{{ r.prompt_tokens }}{% if r.usage_source == 'estimated' %} (est.){% endif %}
+              {% elif r.token_estimation and r.token_estimation.estimated_input_tokens is not none %}{{ r.token_estimation.estimated_input_tokens }} (est.)
+              {% else %}&mdash;{% endif %}
+            </td>
+            <td style="font-family: var(--font-mono); color: var(--green); font-weight: 600;">
+              {% if r.outcome_kind == 'error' and r.usage_source != 'provider' %}&mdash;
+              {% elif r.completion_tokens is defined and r.completion_tokens is not none %}{{ r.completion_tokens }}
+              {% else %}&mdash;{% endif %}
+            </td>
+            <td>
+              <span class="badge {% if r.status in ('ok', 'allowed') or r.outcome_kind == 'allowed' %}badge-allowed{% elif r.status == 'denied' or r.policy_decision == 'DENY' %}badge-denied{% elif r.outcome_kind == 'error' %}badge-error{% else %}badge-pending{% endif %}">
+                {{ r.status or r.outcome_kind or 'ok' }}
+              </span>
+            </td>
+            <td style="font-size: 0.85rem;">
+              {% if r.outcome_kind == 'error' %}
+                <span style="color: var(--red);">{{ r.error_detail or r.error_code or 'Provider request failed' }}</span>
+                {% if r.error_code == 'ProviderAuthenticationError' and 'OPENAI_API_KEY' in (r.error_detail or '') %}
+                  <br><span style="color: var(--text-muted);">Set OPENAI_API_KEY in the server environment and restart Aegis.</span>
+                {% endif %}
+              {% else %}&mdash;{% endif %}
+            </td>
+            <td style="font-size: 0.8rem; color: var(--text-dim); font-family: var(--font-mono);">{{ r.timestamp or r.ts or r.recorded_at or '' }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" class="empty-state">
+              <div class="empty-state-title">No LLM calls recorded in this server session</div>
+              <p>Run a guarded prompt above. The journal is in-memory, so its history resets when the backend restarts.</p>
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 {% endblock %}

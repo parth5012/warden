@@ -23,6 +23,12 @@ from warden.llm.types import (
     RetryableProviderError,
     TokenLimitExceededError,
 )
+from warden.llm.providers import (
+    ProviderAuthenticationError,
+    ProviderPermanentError,
+    ProviderRateLimitError,
+    ProviderTransientError,
+)
 
 T = TypeVar("T")
 
@@ -55,14 +61,15 @@ class SlidingWindowRateLimiter:
 
             # Check TPM
             current_tokens = sum(count for _, count in self._token_entries)
-            if current_tokens + estimated_tokens > self.max_tpm:
+            est_tokens_fallback = estimated_tokens or 0
+            if current_tokens + est_tokens_fallback > self.max_tpm:
                 raise RateLimitExceededError(
-                    f"Local token rate limit reached: {current_tokens + estimated_tokens}/{self.max_tpm} tokens per minute"
+                    f"Local token rate limit reached: {current_tokens + est_tokens_fallback}/{self.max_tpm} tokens per minute"
                 )
 
             # Record entry
             self._request_timestamps.append(now)
-            self._token_entries.append((now, estimated_tokens))
+            self._token_entries.append((now, est_tokens_fallback))
 
 
 class RateLimitingExecutor:
@@ -85,11 +92,22 @@ class RateLimitingExecutor:
                 TokenLimitExceededError,
                 BudgetExceededError,
                 NonRetryableProviderError,
+                ProviderAuthenticationError,
+                ProviderPermanentError,
             ),
         ):
             return False
 
-        if isinstance(exception, (RetryableProviderError, asyncio.TimeoutError, ConnectionError)):
+        if isinstance(
+            exception,
+            (
+                RetryableProviderError,
+                ProviderRateLimitError,
+                ProviderTransientError,
+                asyncio.TimeoutError,
+                ConnectionError,
+            ),
+        ):
             return True
 
         # Check status codes on generic HTTP exceptions (e.g., openai.APIStatusError)
@@ -151,6 +169,10 @@ class RateLimitingExecutor:
             except Exception as exc:
                 last_exception = exc
                 if not self.is_retryable(exc) or retries >= self.config.max_retries:
+                    try:
+                        setattr(exc, "retry_count", retries)
+                    except Exception:
+                        pass
                     raise
 
                 delay = self.get_retry_delay(retries, exc)
@@ -158,5 +180,9 @@ class RateLimitingExecutor:
                 await asyncio.sleep(delay)
 
         if last_exception:
+            try:
+                setattr(last_exception, "retry_count", retries)
+            except Exception:
+                pass
             raise last_exception
         raise RuntimeError("Retry loop exited without result or exception")

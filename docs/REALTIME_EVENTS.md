@@ -1,4 +1,4 @@
-# Warden — Real-time Events
+# Aegis — Real-time Events
 
 > Event delivery mechanism for the Jinja + HTMX + FastAPI UI.
 > Documents HTMX polling, server-sent events, payloads, and authorization.
@@ -8,7 +8,7 @@
 
 ## 1. Architectural Choice
 
-Warden's UI is built with Jinja templates and HTMX, server-rendered through FastAPI (Lock 12). This means:
+Aegis's UI is built with Jinja templates and HTMX, server-rendered through FastAPI (Lock 12). This means:
 
 - **No WebSocket server** is required.
 - **No JavaScript-heavy client** is needed.
@@ -168,7 +168,7 @@ The server queries the journal for events with `ts > last_seen_event.ts` and rep
 
 ### Read events
 
-The `/events` SSE endpoint and all polling endpoints are **unauthenticated** in the MVP. Any operator with access to the Warden URL can view the dashboard and inbox.
+The `/events` SSE endpoint and all polling endpoints are **unauthenticated** in the MVP. Any operator with access to the Aegis URL can view the dashboard and inbox.
 
 ### Write operations via HTMX
 

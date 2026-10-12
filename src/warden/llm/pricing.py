@@ -122,6 +122,21 @@ DEFAULT_PRICING_CATALOG: tuple[PricingTier, ...] = (
         output_cost_per_million=Decimal("0.30"),
         cache_read_cost_per_million=Decimal("0.01875"),
     ),
+    # Groq-hosted GPT-OSS models. Prices are USD per million tokens.
+    PricingTier(
+        provider="groq",
+        model_pattern="openai/gpt-oss-20b",
+        input_cost_per_million=Decimal("0.075"),
+        output_cost_per_million=Decimal("0.30"),
+        pricing_version="groq-2025-08",
+    ),
+    PricingTier(
+        provider="groq",
+        model_pattern="openai/gpt-oss-120b",
+        input_cost_per_million=Decimal("0.15"),
+        output_cost_per_million=Decimal("0.60"),
+        pricing_version="groq-2025-08",
+    ),
     # Fallback Pattern tiers (is_pattern=True)
     PricingTier(
         provider="openai",

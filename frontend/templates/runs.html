@@ -8,7 +8,11 @@
     <h1 class="page-title">Agent Execution Runs</h1>
     <p class="page-desc">Track and inspect thread runs recorded in LangGraph checkpoint store.</p>
   </div>
-  <div>
+  <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+    <form hx-post="/partials/runs/create" hx-target="#runs-table-container" hx-swap="outerHTML" style="display: flex; gap: 0.5rem; align-items: center;">
+      <input type="text" name="prompt" placeholder="Launch agent task..." class="form-input" style="width: 220px;" required>
+      <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.45rem 0.75rem; white-space: nowrap;">+ Launch Run</button>
+    </form>
     <form method="GET" action="/runs" style="display: flex; gap: 0.5rem;">
       <input type="text" name="thread_id" placeholder="Filter by Thread ID..." class="form-input" value="{{ filter_thread_id|default('') }}">
       <button type="submit" class="btn btn-secondary">Filter</button>
@@ -16,7 +20,7 @@
   </div>
 </div>
 
-<div class="table-container">
+<div id="runs-table-container" class="table-container">
   <table>
     <thead>
       <tr>
@@ -45,6 +49,10 @@
           </td>
           <td>
             <a href="/runs/{{ run.thread_id }}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">View Graph</a>
+            {% if run.is_parked %}
+              <button class="btn btn-approve" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; margin-left: 0.3rem;" hx-post="/partials/runs/{{ run.thread_id }}/resume" hx-vals='{"decision": "approve"}' hx-target="#runs-table-container" hx-swap="outerHTML">Approve</button>
+              <button class="btn btn-deny" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; margin-left: 0.2rem;" hx-post="/partials/runs/{{ run.thread_id }}/resume" hx-vals='{"decision": "deny"}' hx-target="#runs-table-container" hx-swap="outerHTML">Deny</button>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

@@ -11,13 +11,30 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+
+SECRET_PATTERN = re.compile(
+    r"(?:bearer\s+[a-zA-Z0-9_\-\.]{15,}|sk-[a-zA-Z0-9_\-]{20,}|gsk_[a-zA-Z0-9_\-]{20,}|key=[a-zA-Z0-9_\-]{15,})",
+    re.IGNORECASE,
+)
+
+
+def redact_secrets_in_obj(obj: Any) -> Any:
+    """Recursively scrub secrets from payload objects."""
+    if isinstance(obj, str):
+        return SECRET_PATTERN.sub("[REDACTED_SECRET]", obj)
+    if isinstance(obj, dict):
+        return {key: redact_secrets_in_obj(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [redact_secrets_in_obj(item) for item in obj]
+    return obj
 
 
 class EventKind(str, Enum):
@@ -49,11 +66,11 @@ class JournalEvent:
     action_id: Optional[str]
     checkpoint_step: Optional[int]
     kind: str
-    actor: str
-    status: str
-    description: str
-    payload: Dict[str, Any]
-    ts: str
+    actor: str | None = ""
+    status: str = ""
+    description: str = ""
+    payload: Dict[str, Any] = field(default_factory=dict)
+    ts: str | datetime = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     prev_hash: Optional[str] = None
     event_hash: Optional[str] = None
     verification_status: VerificationStatus = VerificationStatus.UNAVAILABLE
@@ -61,6 +78,8 @@ class JournalEvent:
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["verification_status"] = self.verification_status.value
+        if isinstance(self.ts, datetime):
+            d["ts"] = self.ts.isoformat()
         return d
 
 
@@ -86,7 +105,16 @@ def canonical_event_bytes(event_dict: Dict[str, Any]) -> bytes:
         separators=(",", ":"),
         ensure_ascii=False,
         allow_nan=False,
+        default=_canonical_json_default,
     ).encode("utf-8")
+
+
+def _canonical_json_default(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return str(value.value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def calculate_event_hash(event_dict: Dict[str, Any]) -> str:
@@ -257,7 +285,11 @@ class InMemoryJournal(AuditJournal):
             if run_id:
                 filtered = [e for e in filtered if e.run_id == run_id]
             if actor:
-                filtered = [e for e in filtered if actor.lower() in e.actor.lower()]
+                filtered = [
+                    e
+                    for e in filtered
+                    if actor.lower() in (e.actor or "").lower()
+                ]
             if q:
                 ql = q.lower()
                 filtered = [
@@ -266,7 +298,7 @@ class InMemoryJournal(AuditJournal):
                     if ql in e.id.lower()
                     or (e.action_id and ql in e.action_id.lower())
                     or ql in e.run_id.lower()
-                    or ql in e.actor.lower()
+                    or ql in (e.actor or "").lower()
                     or ql in e.description.lower()
                     or ql in str(e.payload).lower()
                 ]
@@ -299,3 +331,81 @@ def set_journal(journal: AuditJournal) -> None:
     """Set the active application audit journal."""
     global _GLOBAL_JOURNAL
     _GLOBAL_JOURNAL = journal
+
+
+@runtime_checkable
+class AsyncAuditJournal(Protocol):
+    """Async append/query contract used by guarded API execution."""
+
+    async def append(self, event: JournalEvent) -> None: ...
+
+    async def query(self, filters: dict[str, Any] | None = None) -> list[JournalEvent]: ...
+
+
+class InMemoryAuditJournal:
+    """Async journal adapter for guarded API events, retaining hash-chained event types."""
+
+    def __init__(self, failing: bool = False) -> None:
+        self.events: list[JournalEvent] = []
+        self._seen_write_ahead: set[tuple[str, str | None, str]] = set()
+        self._failing = failing
+
+    def set_failing(self, failing: bool) -> None:
+        self._failing = failing
+
+    async def append(self, event: JournalEvent) -> None:
+        if self._failing:
+            raise RuntimeError("Audit journal storage unavailable")
+        if event.kind in (EventKind.ACTION_REQUESTED.value, EventKind.GATE_REQUESTED.value):
+            key = (event.run_id, event.action_id, event.kind)
+            if key in self._seen_write_ahead:
+                return
+            self._seen_write_ahead.add(key)
+
+        event_data = event.to_dict()
+        event_data["payload"] = redact_secrets_in_obj(event.payload)
+        event_data["prev_hash"] = self.events[-1].event_hash if self.events else None
+        event_data["event_hash"] = calculate_event_hash(event_data)
+        event_data["verification_status"] = VerificationStatus.UNAVAILABLE
+        self.events.append(JournalEvent(**event_data))
+
+    async def query(self, filters: dict[str, Any] | None = None) -> list[JournalEvent]:
+        if self._failing:
+            raise RuntimeError("Audit journal storage unavailable")
+        if not filters:
+            return list(self.events)
+        return [
+            event
+            for event in self.events
+            if all(getattr(event, key, None) == value for key, value in filters.items())
+        ]
+
+    async def append_llm_usage(self, event: JournalEvent) -> None:
+        await self.append(event)
+
+    def record_llm_usage(
+        self,
+        *,
+        run_id: str,
+        thread_id: str,
+        action_id: str,
+        **payload: Any,
+    ) -> JournalEvent:
+        event = JournalEvent(
+            id=str(uuid.uuid4()),
+            run_id=run_id,
+            thread_id=thread_id,
+            action_id=action_id,
+            checkpoint_step=None,
+            kind="llm_usage",
+            actor=payload.get("actor"),
+            payload=redact_secrets_in_obj(payload),
+            ts=payload.get("timestamp") or datetime.now(timezone.utc),
+        )
+        event_data = event.to_dict()
+        event_data["prev_hash"] = self.events[-1].event_hash if self.events else None
+        event_data["event_hash"] = calculate_event_hash(event_data)
+        event_data["verification_status"] = VerificationStatus.UNAVAILABLE
+        stored_event = JournalEvent(**event_data)
+        self.events.append(stored_event)
+        return stored_event

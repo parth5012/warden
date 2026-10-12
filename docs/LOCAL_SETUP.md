@@ -1,6 +1,6 @@
-# Warden — Local Setup
+# Aegis — Local Setup
 
-> Exact prerequisites and commands to get Warden running locally.
+> Exact prerequisites and commands to get Aegis running locally.
 > For coding conventions and PR workflow, see [`DEVELOPMENT_GUIDE.md`](DEVELOPMENT_GUIDE.md).
 
 ---

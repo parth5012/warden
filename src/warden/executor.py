@@ -1,433 +1,753 @@
-"""GuardedExecutor: The single governance seam for all tool and LLM actions.
+"""GuardedExecutor — Centralized execution governance boundary for Aegis.
 
-Core Invariants:
-- Lock 1: Both tool and LLM actions cross this single seam (Action.kind in {tool, llm}).
-- Lock 2: Pending is returned as explicit data — never an invisible interrupt inside execute().
-- Lock 3: Write-ahead logging (action_requested) before policy evaluation with idempotency key (run_id, action_id).
-- Lock 4: Fail-closed on governance / policy infrastructure failure -> Error(reason="governance_unavailable").
-- Lock 5: Denied is terminal. No human override of a policy deny.
-- Lock 7: Sandboxed tools contained via Docker SandboxPort; API tools run in-process.
+All tool and LLM actions must pass through GuardedExecutor.execute().
+Enforces:
+1. Action validation
+2. Handler resolution
+3. Write-ahead audit journaling
+4. Policy evaluation via PolicyEngine
+5. Terminal denial enforcement (DENY is terminal, cannot be overridden)
+6. Explicit Pending outcome for human approval (ESCALATE)
+7. Safe execution of registered handlers (ALLOW or approved ESCALATE)
+8. Outcome journaling and typed error conversion (fail-closed)
 """
 
 from __future__ import annotations
 
-import time
+import inspect
+import logging
 import uuid
-from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from dataclasses import dataclass, field, replace
+from typing import Any, Awaitable, Callable
 
-from warden.config import get_clef_client, get_groq_llm, settings
-from warden.journal import AuditJournal, EventKind, InMemoryJournal, get_journal
-from warden.llm.client import GuardedLLMClient
-from warden.llm.types import LLMRequest
+from warden.journal import (
+    AsyncAuditJournal,
+    AuditJournal,
+    InMemoryJournal,
+    JournalEvent,
+    redact_secrets_in_obj,
+)
+from warden.config import get_clef_client
 from warden.models import (
     Action,
     ActionKind,
     Allowed,
     Denied,
     Error,
-    ExecutionContext,
+    ExecutionContext as DomainExecutionContext,
     GateDecision,
     GateRequest,
     GateVerdict,
     Outcome,
     Pending,
 )
-from warden.policy.engine import PolicyDecision, PolicyEngine, PolicyVerdict
-from warden.sandbox.docker import DockerSandbox
-from warden.sandbox.port import SandboxPort, SandboxUnavailable
-from warden.tools import base as tools_base
-from warden.tools import deny_tools, hitl_tools, safe_tools, sandbox_tools
+from warden.policy.engine import (
+    PolicyDecision,
+    PolicyEngine,
+    PolicyError,
+    PolicyResult,
+)
+from warden.llm.types import BudgetConfig
+from warden.llm.client import GuardedLLMClient, LLMExecutionResult
 
-HITL_TOOLS: Dict[str, str] = {
-    "send_email": "POL_EGRESS_EXTERNAL_MSG",
-    "restart_service": "POL_INFRA_MUTATION",
-    "batch_delete_files": "SEC-FS-04",
-    "sql_schema_migration": "SEC-DB-02",
-    "mass_delete": "SEC-FS-04",
-}
-
-SANDBOX_TOOLS = {"exec_shell", "shell"}
-
-LLMProviderFn = Callable[[LLMRequest], Awaitable[Any]]
+logger = logging.getLogger("warden.executor")
 
 
-@dataclass
-class AgentTelemetry:
-    """Telemetry metrics accumulated for an agent across the executor seam."""
+class _DefaultPolicy:
+    pass
 
-    llm_calls: int = 0
-    tool_calls: int = 0
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    denied: int = 0
-    gated: int = 0
-    latency_ms: int = 0
+
+_DEFAULT_POLICY = _DefaultPolicy()
+
+
+@dataclass(frozen=True)
+class ExecutionContext:
+    """Context carried across the executor seam."""
+
+    run_id: str = ""
+    thread_id: str = ""
+    checkpoint_step: int | None = None
+    actor: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+Handler = Callable[[Action], Any] | Callable[[Action], Awaitable[Any]]
+
+
+class HandlerRegistry:
+    """Registry mapping (ActionKind, name) to authorized handler callables."""
+
+    def __init__(self) -> None:
+        self._handlers: dict[tuple[ActionKind, str], Handler] = {}
+
+    def register(
+        self,
+        name: str,
+        handler: Handler,
+        kind: ActionKind = ActionKind.TOOL,
+    ) -> None:
+        if not callable(handler):
+            raise TypeError(f"Handler for '{name}' must be callable")
+        self._handlers[(kind, name)] = handler
+
+    def resolve(self, kind: ActionKind, name: str) -> Handler | None:
+        return self._handlers.get((kind, name))
+
+    def has_handler(self, kind: ActionKind, name: str) -> bool:
+        return (kind, name) in self._handlers
 
 
 class GuardedExecutor:
-    """The deep module seam. One interface: execute(action, ctx, approval) -> Outcome."""
+    """Centralized governance boundary for executing actions."""
 
     def __init__(
         self,
-        journal: Optional[AuditJournal] = None,
-        policy: Optional[PolicyEngine] = None,
-        sandbox: Optional[SandboxPort] = None,
-        llm_provider: Optional[LLMProviderFn] = None,
+        journal: AsyncAuditJournal | AuditJournal | None = None,
+        policy: PolicyEngine | None | _DefaultPolicy = _DEFAULT_POLICY,
+        sandbox: Any | None = None,
+        llm_client: Any | None = None,
+        *,
+        registry: HandlerRegistry | None = None,
+        policy_engine: PolicyEngine | None = None,
+        require_audit: bool = False,
+        approval_store: Any | None = None,
+        approver_keys: Any | None = None,
     ) -> None:
-        self.journal: AuditJournal = journal if journal is not None else get_journal()
-        # Production default: live Clef L2 when Cloudflare creds are configured,
-        # hermetic FakeClefClient otherwise (CI-safe). Explicit policies pass
-        # through untouched for unit tests.
-        self.policy: PolicyEngine = (
-            policy if policy is not None else PolicyEngine(clef=get_clef_client())
+        self.journal = journal
+        self.policy_engine: PolicyEngine | None
+        if policy is _DEFAULT_POLICY:
+            self.policy_engine = (
+                policy_engine
+                if policy_engine is not None
+                else PolicyEngine(
+                    clef=get_clef_client(),
+                    fallback_to_layers=True,
+                )
+            )
+        elif isinstance(policy, PolicyEngine):
+            self.policy_engine = policy
+        else:
+            self.policy_engine = policy_engine
+        self.policy = self.policy_engine
+        self.sandbox = sandbox
+        self.llm_client = llm_client
+        self.registry = registry if registry is not None else HandlerRegistry()
+        if registry is None:
+            from warden.tools.registry import register_tools
+
+            register_tools(self)
+        self.approval_store = approval_store
+        self.approver_keys = approver_keys or {}
+        self.require_audit = require_audit
+
+    async def _append_journal_event(self, event: JournalEvent) -> None:
+        if self.journal is None:
+            return
+
+        append = getattr(self.journal, "append")
+        if isinstance(self.journal, InMemoryJournal):
+            result = append(
+                event.kind,
+                run_id=event.run_id,
+                thread_id=event.thread_id,
+                actor=event.actor or "",
+                action_id=event.action_id,
+                checkpoint_step=event.checkpoint_step,
+                status=event.status,
+                description=event.description,
+                payload=event.payload,
+            )
+        else:
+            if event.actor is None:
+                event = replace(event, actor="")
+            result = append(event)
+        if inspect.isawaitable(result):
+            await result
+
+    def register_handler(
+        self,
+        name: str,
+        handler: Handler,
+        kind: ActionKind = ActionKind.TOOL,
+    ) -> None:
+        """Register an authorized handler for an action name and kind."""
+        self.registry.register(name, handler, kind=kind)
+
+    def _resolve_handler(self, action: Action) -> Handler | None:
+        """Resolve handler for an action from registry, llm_client, or sandbox."""
+        # 1. Direct registry lookup
+        registered = self.registry.resolve(action.kind, action.name)
+        if registered is not None:
+            return registered
+
+        # 2. LLM action resolution via injected llm_client
+        if action.kind == ActionKind.LLM and self.llm_client is not None:
+            if hasattr(self.llm_client, "invoke"):
+                from typing import cast
+                return cast(Handler, self.llm_client.invoke)
+
+        # 3. Tool action resolution via injected sandbox
+        if action.kind == ActionKind.TOOL and self.sandbox is not None:
+            if hasattr(self.sandbox, "resolve_tool"):
+                resolved: Handler | None = self.sandbox.resolve_tool(action.name)
+                if resolved is not None:
+                    return resolved
+            if hasattr(self.sandbox, "has_tool") and self.sandbox.has_tool(action.name):
+                if hasattr(self.sandbox, "run"):
+                    from typing import cast
+                    return cast(Handler, self.sandbox.run)
+
+        return None
+
+    def _normalize_ctx(
+        self,
+        ctx: ExecutionContext | DomainExecutionContext | dict[str, Any] | None,
+        action: Action,
+    ) -> ExecutionContext:
+        if isinstance(ctx, ExecutionContext):
+            return ctx
+        if isinstance(ctx, DomainExecutionContext):
+            return ExecutionContext(
+                run_id=ctx.run_id or action.run_id,
+                thread_id=ctx.thread_id or action.thread_id,
+                checkpoint_step=ctx.checkpoint_step,
+                actor=ctx.actor,
+                metadata=ctx.metadata,
+            )
+        if isinstance(ctx, dict):
+            return ExecutionContext(
+                run_id=str(ctx.get("run_id", action.run_id)),
+                thread_id=str(ctx.get("thread_id", action.thread_id)),
+                checkpoint_step=ctx.get("checkpoint_step"),
+                actor=ctx.get("actor"),
+                metadata=ctx.get("metadata", {}),
+            )
+        return ExecutionContext(
+            run_id=action.run_id,
+            thread_id=action.thread_id,
         )
-        self._sandbox: Optional[SandboxPort] = sandbox
-        self.llm_provider: Optional[LLMProviderFn] = llm_provider
-        self.telemetry: Dict[str, AgentTelemetry] = {}
-
-    @property
-    def sandbox(self) -> SandboxPort:
-        if self._sandbox is None:
-            self._sandbox = DockerSandbox(workspace_path=settings.sandbox_workspace)
-        return self._sandbox
-
-    def get_telemetry(self, actor: str) -> AgentTelemetry:
-        return self.telemetry.setdefault(actor, AgentTelemetry())
 
     async def execute(
         self,
         action: Action,
-        ctx: Optional[ExecutionContext] = None,
-        approval: Optional[GateDecision] = None,
+        ctx: ExecutionContext | DomainExecutionContext | dict[str, Any] | None = None,
+        approval: GateDecision | None = None,
     ) -> Outcome:
-        """Execute an action across the governance seam.
-
-        Args:
-            action: The action to execute (kind=tool or kind=llm).
-            ctx: Execution context metadata (actor, thread_id, checkpoint_step).
-            approval: Optional human gate decision from a previous Pending outcome.
+        """Execute an action through the governance perimeter.
 
         Returns:
-            Allowed, Denied, Pending, or Error.
+            Allowed: Action passed policy and successfully executed.
+            Denied: Action violated policy or human approver denied gate (terminal).
+            Pending: Action requires human approval (gate created).
+            Error: Precondition failed, policy error, or governance infrastructure down.
         """
-        actor = (ctx.actor if ctx else None) or str(action.payload.get("actor", "agent"))
-        checkpoint_step = ctx.checkpoint_step if ctx else None
-        tele = self.get_telemetry(actor)
+        # Step 1 & 2: Action validation
+        validation_error = self._validate_action(action)
+        if validation_error is not None:
+            return validation_error
 
-        # 1. Write-Ahead Logging (Lock 3)
-        self.journal.append(
-            EventKind.ACTION_REQUESTED,
-            run_id=action.run_id,
-            thread_id=action.thread_id,
-            actor=actor,
-            action_id=action.id,
-            checkpoint_step=checkpoint_step,
-            status="Proposed",
-            description=f"{action.kind.value.upper()} action: {action.name}",
-            payload={"name": action.name, "kind": action.kind.value, **action.payload},
-        )
-
-        # 2. Policy Evaluation (L0 -> L1 -> L2)
-        try:
-            verdict = self.policy.evaluate(action.name, action.payload)
-
-            # Static deny guards for tools
-            if action.kind == ActionKind.TOOL:
-                static_denied: Optional[Denied] = None
-                policy_hint = action.payload.get("policy_id")
-                if policy_hint in ("SEC-HOST-00", "SEC-DB-01"):
-                    static_denied = Denied(
-                        reason=str(action.payload.get("policy_reason") or "Terminal Lock 5: Invariant prohibited action"),
-                        policy=str(policy_hint),
-                    )
-                elif action.name in ("exec_db_mutation", "sql_query", "sql_drop") and (
-                    action.name == "sql_drop"
-                    or any(kw in str(action.payload).lower() for kw in ("drop table", "truncate", "delete from"))
-                ):
-                    static_denied = deny_tools.check_db_mutation(action.payload)
-                    if static_denied and policy_hint:
-                        static_denied = Denied(reason=static_denied.reason, policy=str(policy_hint))
-                    elif static_denied is None and action.name == "sql_drop":
-                        static_denied = Denied(reason="Destructive DDL forbidden by policy", policy=str(policy_hint or "SEC-DB-01"))
-                elif any(kw in str(action.payload).lower() for kw in ("/etc/shadow", "/etc/passwd", "/boot")):
-                    path_val = str(action.payload.get("path") or action.payload.get("target_resource") or "")
-                    static_denied = deny_tools.check_path(path_val) or Denied(
-                        reason="Terminal Lock 5: Mutation or deletion of host security configuration (/etc/shadow) is strictly prohibited.",
-                        policy=str(policy_hint or "SEC-HOST-00"),
-                    )
-                    if policy_hint:
-                        static_denied = Denied(reason=static_denied.reason, policy=str(policy_hint))
-                elif action.name in ("exec_shell", "run_shell"):
-                    try:
-                        sandbox_tools.validate_shell(action.payload)
-                    except ValueError as exc:
-                        static_denied = Denied(reason=str(exc), policy=str(policy_hint or "no-destructive-shell"))
-
-                if static_denied is not None:
-                    verdict = PolicyVerdict(
-                        decision=PolicyDecision.DENY,
-                        reason=static_denied.reason,
-                        policy=static_denied.policy,
-                        layer="L0-static",
-                        scores={},
-                    )
-        except Exception:
-            # Policy infrastructure failure -> Fail Closed (Lock 4)
-            self.journal.append(
-                EventKind.ACTION_FAILED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor="PolicyEngine",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status="Failed",
-                description="Policy evaluation failure — fail closed",
-                payload={},
-            )
+        # Step 3: Validate PolicyEngine is available
+        if self.policy_engine is None:
+            # Missing policy engine never triggers unguarded fallback!
             return Error(reason="governance_unavailable")
 
-        # Rulebook precedence: an explicit escalation-rule hint routes to the
-        # human gate even when L2-Clef alone votes deny. Deterministic rules
-        # (lock 9) win over ML judgment; L0/L1 denies stay terminal, and
-        # clef-risk denies without an explicit rule stay terminal too.
-        policy_hint = action.payload.get("policy_id")
-        if (
-            verdict.decision == PolicyDecision.DENY
-            and verdict.policy == "clef-risk"
-            and str(policy_hint or "") in ("SEC-FS-04", "SEC-DB-02", "SEC-NET-01")
-        ):
-            verdict = PolicyVerdict(
-                decision=PolicyDecision.ESCALATE,
-                reason=f"{verdict.reason} — explicit rule {policy_hint} routes to human gate",
-                policy=str(policy_hint),
-                layer=verdict.layer,
-                scores=verdict.scores,
-            )
+        context_obj = self._normalize_ctx(ctx, action)
 
-        self.journal.append(
-            EventKind.POLICY_EVALUATED,
-            run_id=action.run_id,
-            thread_id=action.thread_id,
-            actor="PolicyEngine",
-            action_id=action.id,
-            checkpoint_step=checkpoint_step,
-            status=verdict.decision.value,
-            description=f"Policy {verdict.decision.value}: {verdict.reason}",
-            payload={"policy": verdict.policy, "layer": verdict.layer},
-        )
-
-        # 3. Terminal Deny (Lock 5) — humans cannot override
-        if verdict.decision == PolicyDecision.DENY:
-            tele.denied += 1
-            if action.kind == ActionKind.TOOL:
-                tele.tool_calls += 1
-            else:
-                tele.llm_calls += 1
-
-            self.journal.append(
-                EventKind.ACTION_DENIED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor="PolicyEngine",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status="Denied",
-                description=f"DENIED (terminal, Lock 5): {verdict.reason}",
-                payload={"policy": verdict.policy, "terminal": True},
-            )
-            return Denied(reason=verdict.reason, policy=verdict.policy)
-
-        # 4. HITL Escalation (Lock 2)
-        policy_hint = action.payload.get("policy_id")
-        is_hitl = (
-            action.name in HITL_TOOLS
-            or policy_hint in ("SEC-FS-04", "SEC-DB-02", "SEC-NET-01")
-            or verdict.decision == PolicyDecision.ESCALATE
-        )
-        if is_hitl:
-            rule_id = str(policy_hint or HITL_TOOLS.get(action.name, verdict.policy))
-            gate = GateRequest(
-                gate_id=f"gate-{action.id}",
-                action=action,
-                context={"rule_id": rule_id, "reason": verdict.reason, "payload": action.payload},
-            )
-
-            if approval is None:
-                tele.gated += 1
-                self.journal.append(
-                    EventKind.GATE_REQUESTED,
-                    run_id=action.run_id,
-                    thread_id=action.thread_id,
-                    actor="GuardedExecutor",
-                    action_id=action.id,
-                    checkpoint_step=checkpoint_step,
-                    status="Pending",
-                    description=f"HITL gate parked: {rule_id}",
-                    payload={"gate_id": gate.gate_id, "rule_id": rule_id},
+        # Step 4: Write-ahead audit journal (action_requested)
+        if self.journal is not None:
+            try:
+                audit_payload: dict[str, Any]
+                if action.kind == ActionKind.LLM:
+                    audit_payload = {
+                        key: action.payload.get(key)
+                        for key in ("model", "provider", "max_tokens", "temperature")
+                        if key in action.payload
+                    }
+                else:
+                    audit_payload = action.payload
+                safe_payload = redact_secrets_in_obj(audit_payload)
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="action_requested",
+                        actor=context_obj.actor,
+                        payload={
+                            "action_id": action.id,
+                            "kind": action.kind.value,
+                            "name": action.name,
+                            "payload": safe_payload,
+                        },
+                    )
                 )
-                return Pending(gate_request=gate)
+            except Exception as exc:
+                logger.error("Journal write-ahead failed: %s", exc)
+                return Error(reason="governance_unavailable")
+        elif self.require_audit:
+            return Error(reason="governance_unavailable")
 
-            # Record human approver decision
-            self.journal.append(
-                EventKind.GATE_DECIDED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor=f"approver:{approval.decided_by}",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status=approval.verdict.value,
-                description=f"Human {approval.verdict.value}d: {approval.reason}",
-                payload={"gate_id": gate.gate_id, "reason": approval.reason, "verdict": approval.verdict.value},
+        # Step 5: Policy evaluation
+        try:
+            policy_result = await self.policy_engine.evaluate(action, context_obj)
+        except PolicyError as exc:
+            logger.error("Policy evaluation failed: %s", exc)
+            return Error(reason=f"policy_evaluation_error: {str(exc)}")
+        except Exception as exc:
+            logger.error("Unexpected error during policy evaluation: %s", exc)
+            return Error(reason=f"policy_evaluation_error: {str(exc)}")
+
+        if not isinstance(policy_result, PolicyResult) or not isinstance(
+            policy_result.decision, PolicyDecision
+        ):
+            return Error(
+                reason="Invalid policy decision: malformed result from policy engine"
             )
+
+        if self.journal is not None:
+            try:
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="policy_evaluated",
+                        actor=context_obj.actor,
+                        status=policy_result.decision.value,
+                        description=policy_result.reason,
+                        payload={
+                            "policy": action.payload.get("policy_id")
+                            or policy_result.policy_name
+                            or "default",
+                            "layer": action.payload.get("policy_layer", "L1"),
+                            "verdict": policy_result.decision.value,
+                            "reason": policy_result.reason,
+                        },
+                    )
+                )
+            except Exception as exc:
+                logger.error("Journal policy_evaluated failed: %s", redact_secrets_in_obj(str(exc)))
+                return Error(reason="governance_unavailable")
+
+        # Step 6: Decision enforcement
+        # 7a: DENY is terminal! Even with an approval object, terminal DENY cannot be overridden.
+        if policy_result.decision == PolicyDecision.DENY:
+            if (
+                policy_result.policy_name is None
+                and self._resolve_handler(action) is None
+            ):
+                return Error(
+                    reason=f"Missing handler: no registered handler for {action.kind.value} action '{action.name}'"
+                )
+            if self.journal is not None:
+                try:
+                    await self._append_journal_event(
+                        JournalEvent(
+                            id=str(uuid.uuid4()),
+                            run_id=action.run_id,
+                            thread_id=action.thread_id,
+                            action_id=action.id,
+                            checkpoint_step=context_obj.checkpoint_step,
+                            kind="action_denied",
+                            actor=context_obj.actor,
+                            payload={
+                                "action_id": action.id,
+                                "reason": policy_result.reason,
+                                "policy": policy_result.policy_name or "terminal_deny",
+                            },
+                        )
+                    )
+                except Exception as exc:
+                    logger.error("Journal action_denied failed: %s", redact_secrets_in_obj(str(exc)))
+            # Handler is NEVER invoked. No approval can override terminal DENY.
+            return Denied(
+                reason=policy_result.reason,
+                policy=policy_result.policy_name or "terminal_deny",
+            )
+
+        # 7b: ESCALATE (Human-in-the-loop)
+        approval_id: str | None = None
+        if policy_result.decision == PolicyDecision.ESCALATE:
+            if approval is None:
+                # Secure binding: create the durable approval record first so
+                # its approval id can serve as the single gate identifier
+                # spanning store, journal, and GateRequest.
+                # The `approver_key` on the record names WHO is authorized to
+                # claim it (selected from the configured approver allowlist);
+                # it is not a caller-supplied identity.
+                if self.approval_store is not None:
+                    from warden.hitl.approvals import (
+                        ApprovalError,
+                        make_expiry,
+                    )
+
+                    try:
+                        if not self.approver_keys:
+                            # No approver allowlist configured: fail closed.
+                            return Error(reason="governance_unavailable")
+                        approver_key = sorted(self.approver_keys.keys())[0]
+                        approval_id = await self.approval_store.record(
+                            action=action,
+                            approver_key=approver_key,
+                            policy_identity=policy_result.policy_name or "default",
+                            expires_at=make_expiry(),
+                        )
+                    except ApprovalError:
+                        return Error(reason="governance_unavailable")
+                    except Exception:
+                        return Error(reason="governance_unavailable")
+
+                gate_id = str(uuid.uuid4())
+                if approval_id:
+                    gate_id = approval_id
+                gate_req = GateRequest(
+                    gate_id=gate_id,
+                    action=action,
+                    context={
+                        "reason": policy_result.reason,
+                        "policy": policy_result.policy_name or "",
+                        "rule_id": action.payload.get("policy_id")
+                        or policy_result.policy_name
+                        or "",
+                    },
+                )
+                if self.journal is not None:
+                    try:
+                        await self._append_journal_event(
+                            JournalEvent(
+                                id=str(uuid.uuid4()),
+                                run_id=action.run_id,
+                                thread_id=action.thread_id,
+                                action_id=action.id,
+                                checkpoint_step=context_obj.checkpoint_step,
+                                kind="gate_requested",
+                                actor=context_obj.actor,
+                                payload={
+                                    "gate_id": gate_id,
+                                    "action_id": action.id,
+                                    "context": gate_req.context,
+                                    "requested_at": gate_req.requested_at.isoformat(),
+                                },
+                            )
+                        )
+                    except Exception as exc:
+                        logger.error("Journal gate_requested failed: %s", exc)
+                        return Error(reason="governance_unavailable")
+                # Do NOT invoke handler
+                return Pending(gate_request=gate_req)
+
+            # Approval passed: validate approval decision
+            if not isinstance(approval, GateDecision):
+                return Error(reason="Invalid approval: expected GateDecision instance")
+
+            # Secure approval binding validation when a store is configured.
+            # A caller-supplied approved=True flag is not authorization:
+            # the decision must be claimed from the durable store, matched
+            # against the exact pending action (fingerprint incl. canonical
+            # payload hash), the approver allowlist, and expiry.
+            if self.approval_store is not None:
+                from warden.hitl.approvals import (
+                    ApprovalAlreadyClaimed,
+                    ApprovalError,
+                    ApprovalExpired,
+                    ApprovalMismatch,
+                    ApprovalNotFound,
+                    ApprovalUnauthorized,
+                )
+
+                claimed_ok = False
+                decision_verdict = "approve" if (
+                    approval.verdict == GateVerdict.APPROVE
+                ) else "deny"
+                try:
+                    claimed_ok = await self.approval_store.claim(
+                        approval_id=approval.gate_id,
+                        action=action,
+                        approver_key=approval.decided_by,
+                        decision=decision_verdict,
+                        policy_identity=policy_result.policy_name or "default",
+                    )
+                except ApprovalMismatch:
+                    return Denied(
+                        reason=(
+                            "Approval rejected: action binding (id/kind/name/"
+                            "run/thread/payload/policy) does not match the "
+                            "originally proposed action"
+                        ),
+                        policy="human_gate",
+                    )
+                except ApprovalExpired:
+                    return Denied(
+                        reason="Approval rejected: approval has expired",
+                        policy="human_gate",
+                    )
+                except ApprovalAlreadyClaimed:
+                    return Denied(
+                        reason=(
+                            "Approval rejected: duplicate or replayed "
+                            "approval claim"
+                        ),
+                        policy="human_gate",
+                    )
+                except ApprovalNotFound:
+                    return Denied(
+                        reason="Approval rejected: unknown approval identifier",
+                        policy="human_gate",
+                    )
+                except ApprovalUnauthorized:
+                    return Denied(
+                        reason=(
+                            f"Approval rejected: '{approval.decided_by}' is not "
+                            "an authorized approver for this approval"
+                        ),
+                        policy="human_gate",
+                    )
+                except ApprovalError:
+                    return Error(reason="governance_unavailable")
+                except Exception:
+                    return Error(reason="governance_unavailable")
+                if not claimed_ok:
+                    return Error(reason="governance_unavailable")
+
+            if approval.verdict == GateVerdict.DENY:
+                if self.journal is not None:
+                    try:
+                        await self._append_journal_event(
+                            JournalEvent(
+                                id=str(uuid.uuid4()),
+                                run_id=action.run_id,
+                                thread_id=action.thread_id,
+                                action_id=action.id,
+                                checkpoint_step=context_obj.checkpoint_step,
+                                kind="gate_decided",
+                                actor=approval.decided_by,
+                                payload={
+                                    "gate_id": approval.gate_id,
+                                    "verdict": approval.verdict.value,
+                                    "reason": approval.reason,
+                                    "decided_by": approval.decided_by,
+                                },
+                            )
+                        )
+                    except Exception as exc:
+                        logger.error("Journal gate_decided failed: %s", redact_secrets_in_obj(str(exc)))
+                        return Error(reason="governance_unavailable")
+                return Denied(
+                    reason=f"Gate rejected by approver {approval.decided_by}: {approval.reason}",
+                    policy="human_gate",
+                )
 
             if approval.verdict != GateVerdict.APPROVE:
-                if action.kind == ActionKind.TOOL:
-                    tele.tool_calls += 1
-                return Denied(reason=f"Human denied: {approval.reason}", policy=rule_id)
+                return Error(reason=f"Unknown gate verdict: {approval.verdict}")
 
-        # 5. Execution (Sandboxed or In-Process)
-        start = time.monotonic()
-        is_sandbox = action.name in SANDBOX_TOOLS
+            # Human approved: record gate_decided and proceed to execution
+            if self.journal is not None:
+                try:
+                    await self._append_journal_event(
+                        JournalEvent(
+                            id=str(uuid.uuid4()),
+                            run_id=action.run_id,
+                            thread_id=action.thread_id,
+                            action_id=action.id,
+                            checkpoint_step=context_obj.checkpoint_step,
+                            kind="gate_decided",
+                            actor=approval.decided_by,
+                            payload={
+                                "gate_id": approval.gate_id,
+                                "verdict": approval.verdict.value,
+                                "reason": approval.reason,
+                                "decided_by": approval.decided_by,
+                            },
+                        )
+                    )
+                except Exception as exc:
+                    logger.error("Journal gate_decided failed: %s", redact_secrets_in_obj(str(exc)))
+                    return Error(reason="governance_unavailable")
 
-        self.journal.append(
-            EventKind.EXECUTION_STARTED,
-            run_id=action.run_id,
-            thread_id=action.thread_id,
-            actor="GuardedExecutor",
-            action_id=action.id,
-            checkpoint_step=checkpoint_step,
-            status="Started",
-            description=f"Executing {action.name}",
-            payload={"route": "sandbox" if is_sandbox else "in-process", "kind": action.kind.value},
-        )
-
-        try:
-            if action.kind == ActionKind.TOOL:
-                tele.tool_calls += 1
-                result = await self._execute_tool(action, actor, is_sandbox)
-            else:
-                tele.llm_calls += 1
-                result, usage = await self._execute_llm(action)
-                tele.prompt_tokens += usage.get("prompt", 0)
-                tele.completion_tokens += usage.get("completion", 0)
-        except SandboxUnavailable as exc:
-            self.journal.append(
-                EventKind.ACTION_FAILED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor="GuardedExecutor",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status="Failed",
-                description=f"{action.name} sandbox unavailable — fail closed",
-                payload={"error": str(exc)[:200]},
+        # Resolve tool handlers only after policy has allowed the action or
+        # an operator has approved it. DENY and ESCALATE must not depend on
+        # an executable handler being registered.
+        handler = None if action.kind == ActionKind.LLM else self._resolve_handler(action)
+        if action.kind != ActionKind.LLM and handler is None:
+            return Error(
+                reason=f"Missing handler: no registered handler for {action.kind.value} action '{action.name}'"
             )
-            return Error(reason="governance_unavailable")
-        except Exception as exc:
-            latency = int((time.monotonic() - start) * 1000)
-            tele.latency_ms += latency
-            self.journal.append(
-                EventKind.ACTION_FAILED,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-                actor="GuardedExecutor",
-                action_id=action.id,
-                checkpoint_step=checkpoint_step,
-                status="Failed",
-                description=f"{action.name} failed: {type(exc).__name__}",
-                payload={"error": str(exc)[:200]},
-            )
-            return Error(reason="governance_unavailable")
 
-        latency = int((time.monotonic() - start) * 1000)
-        tele.latency_ms += latency
-
-        self.journal.append(
-            EventKind.ACTION_COMPLETED,
-            run_id=action.run_id,
-            thread_id=action.thread_id,
-            actor="GuardedExecutor",
-            action_id=action.id,
-            checkpoint_step=checkpoint_step,
-            status="Succeeded",
-            description=f"{action.name} completed in {latency}ms",
-            payload={"result": str(result)[:300]},
-        )
-        return Allowed(result=result)
-
-    async def _execute_tool(self, action: Action, actor: str, is_sandbox: bool) -> Any:
-        tool_ctx = tools_base.ToolContext(
-            run_id=action.run_id,
-            thread_id=action.thread_id,
-            actor=actor,
-        )
-
-        if action.name == "get_system_metrics":
-            return await safe_tools.run_system_metrics(action.payload, tool_ctx)
-        elif action.name == "read_service_logs":
-            return await safe_tools.run_service_logs(action.payload, tool_ctx)
-        elif action.name in ("query_db_readonly", "sql_query"):
-            return await safe_tools.run_db_readonly(action.payload, tool_ctx)
-        elif action.name in ("send_email", "restart_service", "batch_delete_files", "sql_schema_migration", "mass_delete"):
-            return {"status": "sent-after-approval", "tool": action.name}
-        elif action.name in ("exec_db_mutation", "read_file_sensitive", "read_file"):
-            if action.name == "exec_db_mutation":
-                return await deny_tools.run_db_mutation(action.payload)
-            return await deny_tools.run_file_read(action.payload)
-        elif is_sandbox:
-            sandbox_action = Action(
-                id=action.id,
-                kind=action.kind,
-                name="shell",
-                payload=action.payload,
-                run_id=action.run_id,
-                thread_id=action.thread_id,
-            )
-            sb_result = await self.sandbox.run(sandbox_action)
-            return {
-                "ok": sb_result.ok,
-                "exit_code": sb_result.exit_code,
-                "stdout": sb_result.stdout[:500],
-                "profile": sb_result.profile,
-                "duration_ms": sb_result.duration_ms,
-            }
-        else:
-            return {"status": "executed", "tool": action.name, "payload": action.payload}
-
-    async def _execute_llm(self, action: Action) -> Tuple[str, Dict[str, int]]:
-        prompt = str(action.payload.get("prompt") or action.payload.get("messages") or "")
-        usage: Dict[str, int] = {"prompt": 0, "completion": 0}
-
-        if self.llm_provider is not None:
-            raw = await self.llm_provider(
-                LLMRequest(
-                    model=action.name,
-                    messages=[{"role": "user", "content": prompt}],
-                    provider="groq",
+        if self.journal is not None:
+            try:
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="execution_started",
+                        actor=context_obj.actor,
+                        status="running",
+                        description=f"Execution started for {action.name}",
+                        payload={
+                            "action_name": action.name,
+                            "route": "sandbox" if self.sandbox is not None else "in-process",
+                        },
+                    )
                 )
+            except Exception as exc:
+                logger.error("Journal execution_started failed: %s", redact_secrets_in_obj(str(exc)))
+                return Error(reason="governance_unavailable")
+
+        # Step 7: Execute handler (Only reached on valid ALLOW or approved ESCALATE)
+        try:
+            if action.kind == ActionKind.LLM:
+                # LLM actions are routed exclusively through GuardedLLMClient
+                # (which enforces policy again and invokes the provider adapter).
+                raw_result = await self._invoke_llm(action, run_id=action.run_id)
+            else:
+                assert handler is not None
+                if inspect.iscoroutinefunction(handler):
+                    raw_result = await handler(action)
+                else:
+                    res = handler(action)
+                    if inspect.isawaitable(res):
+                        raw_result = await res
+                    else:
+                        raw_result = res
+        except Exception as exc:
+            safe_error = redact_secrets_in_obj(str(exc))
+            logger.error("Handler error during execution of %s: %s", action.name, safe_error)
+            if self.journal is not None:
+                try:
+                    await self._append_journal_event(
+                        JournalEvent(
+                            id=str(uuid.uuid4()),
+                            run_id=action.run_id,
+                            thread_id=action.thread_id,
+                            action_id=action.id,
+                            checkpoint_step=context_obj.checkpoint_step,
+                            kind="action_failed",
+                            actor=context_obj.actor,
+                            payload={
+                                "action_id": action.id,
+                                "error": safe_error,
+                            },
+                        )
+                    )
+                except Exception:
+                    pass
+            return Error(reason=f"handler_error: {safe_error}")
+
+        # Step 9: Final audit event and return Allowed
+        if self.journal is not None:
+            try:
+                await self._append_journal_event(
+                    JournalEvent(
+                        id=str(uuid.uuid4()),
+                        run_id=action.run_id,
+                        thread_id=action.thread_id,
+                        action_id=action.id,
+                        checkpoint_step=context_obj.checkpoint_step,
+                        kind="action_completed",
+                        actor=context_obj.actor,
+                        payload={
+                            "action_id": action.id,
+                            "result": (
+                                "[REDACTED_LLM_RESPONSE]"
+                                if action.kind == ActionKind.LLM
+                                else raw_result
+                                if isinstance(raw_result, (dict, list, str, int, float, bool))
+                                else str(raw_result)
+                            ),
+                        },
+                    )
+                )
+            except Exception as exc:
+                logger.warning("Failed to append action_completed: %s", exc)
+
+        return Allowed(result=raw_result)
+
+    async def _invoke_llm(self, action: Action, run_id: str) -> LLMExecutionResult:
+        """Execute an LLM action through GuardedLLMClient.
+
+        Placement guarantee:
+
+        * Policy was already evaluated by PolicyEngine and returned ALLOW.
+        * The action passed all executor preflight checks (validation,
+          write-ahead journal, policy enforcement).
+        * This is the *only* place where the provider can be called.  DENY and
+          ESCALATE are handled above and never reach this method.
+
+        Args:
+            action: The LLM action (already policy-approved).
+            run_id: Canonical run id to resolve (model, provider, cost) before
+                the provider call and to record in the audit trail.
+
+        Returns:
+            The normalized LLM execution result.
+
+        Raises:
+            LLMClientError subclasses propagate to the caller, who then
+            releases/resolves the run budget reservation and journals the
+            failure.
+        """
+        client = self.llm_client
+
+        # Resolve provider configuration from the action payload (and allow code
+        # to inject a concrete client).  This mirrors the order used by
+        # GuardedLLMClient.resolve_model/provider, so an LLM action that reaches
+        # this seam always has a model, provider, and caller.
+        payload: dict[str, Any] = dict(action.payload)
+        model = str(payload.get("model") or action.name or "gpt-4o")
+        provider = str(payload.get("provider", "openai"))
+
+        # Attach the canonical run/thread identifiers to the action payload so
+        # that the configured client can resolve them without a second lookup.
+        payload.setdefault("_warden", {})
+        payload["_warden"]["run_id"] = run_id
+
+        # The client is injectable by code that owns the adapter; fall back to a
+        # fresh client per request so each call gets its own adapter instance
+        # and telemetry/journal wiring.  This keeps the adapter registry
+        # replaceable and avoids shared mutable state across calls.
+        if client is None:
+            client = GuardedLLMClient(
+                provider_caller=None,
+                tokenizer=None,  # use the client's own tokenizer
+                default_provider=provider,
             )
-            text = str(raw.get("content", raw)) if isinstance(raw, dict) else str(raw)
-            return text, usage
 
-        llm = get_groq_llm()
-        if llm is None:
-            return f"[Offline/Stub response for {prompt[:50]}]", usage
+        # Run the normal guarded execution flow.  This is the ONLY provider
+        # call path, and it is only reached here.
+        exec_result = await client.invoke(
+            action,
+            budget_config=BudgetConfig(
+                max_input_tokens_per_request=payload.get("max_input_tokens_per_request"),
+                max_output_tokens_per_request=payload.get("max_output_tokens_per_request"),
+                max_total_tokens_per_request=payload.get("max_total_tokens_per_request"),
+                max_spend_per_request=payload.get("max_spend_per_request"),
+                max_spend_per_run=payload.get("max_spend_per_run"),
+            ),
+        )
+        return exec_result
 
-        async def provider(req: LLMRequest) -> Any:
-            text = " ".join(str(m.get("content", m)) for m in req.messages)
-            return await llm.ainvoke(text)
-
-        captured: list[dict[str, Any]] = []
-
-        async def sink(event: dict[str, Any]) -> None:
-            captured.append(event)
-
-        client = GuardedLLMClient(provider_caller=provider, telemetry_sink=sink)
-        res = await client.invoke(action)
-        if captured:
-            usage = {
-                "prompt": int(captured[0].get("prompt_tokens", 0)),
-                "completion": int(captured[0].get("output_standard_tokens", 0)),
-            }
-        return str(res.result), usage
+    def _validate_action(self, action: Any) -> Error | None:
+        if not isinstance(action, Action):
+            return Error(reason="Invalid action: expected Action instance")
+        if not isinstance(action.id, str) or not action.id.strip():
+            return Error(reason="Invalid action: id must be a non-empty string")
+        if not isinstance(action.name, str) or not action.name.strip():
+            return Error(reason="Invalid action: name must be a non-empty string")
+        if not isinstance(action.kind, ActionKind):
+            return Error(
+                reason=f"Invalid action: invalid kind {getattr(action, 'kind', None)!r}"
+            )
+        if not isinstance(action.payload, dict):
+            return Error(reason="Invalid action: payload must be a dictionary")
+        if not isinstance(action.run_id, str) or not action.run_id.strip():
+            return Error(reason="Invalid action: run_id must be a non-empty string")
+        if not isinstance(action.thread_id, str) or not action.thread_id.strip():
+            return Error(reason="Invalid action: thread_id must be a non-empty string")
+        return None

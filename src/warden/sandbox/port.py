@@ -1,4 +1,4 @@
-"""Sandbox port interface and result types for Warden.
+"""Sandbox port interface and result types for Aegis.
 
 Defines the SandboxPort protocol, execution result container,
 exception types, and output capture constraints for sandboxed execution.

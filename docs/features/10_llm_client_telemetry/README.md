@@ -9,15 +9,15 @@
 
 ## 1. Overview & Purpose
 
-The **Guarded LLM Client** acts as Warden's single protected execution seam for Large Language Model invocations (`action.kind == ActionKind.LLM`). Rather than permitting raw, unmonitored HTTP requests to LLM providers, Warden gates every request through preflight validation, token estimation, budget reservations, rate limits, concurrency semaphores, bounded retries, response usage extraction, precision-safe cost calculations, and audit telemetry.
+The **Guarded LLM Client** acts as Aegis's single protected execution seam for Large Language Model invocations (`action.kind == ActionKind.LLM`). Rather than permitting raw, unmonitored HTTP requests to LLM providers, Aegis gates every request through preflight validation, token estimation, budget reservations, rate limits, concurrency semaphores, bounded retries, response usage extraction, precision-safe cost calculations, and audit telemetry.
 
-Warden remains the sole governance authority. Token accounting and cost tracking operate strictly within Warden's security boundary.
+Aegis remains the sole governance authority. Token accounting and cost tracking operate strictly within Aegis's security boundary.
 
 ---
 
 ## 2. Token Usage Model & Mutually-Exclusive Buckets
 
-To prevent double counting across providers that report overlapping token categories (such as OpenAI including cached tokens within `prompt_tokens` and reasoning tokens within `completion_tokens`), Warden enforces mutually-exclusive accounting buckets:
+To prevent double counting across providers that report overlapping token categories (such as OpenAI including cached tokens within `prompt_tokens` and reasoning tokens within `completion_tokens`), Aegis enforces mutually-exclusive accounting buckets:
 
 $$\text{total\_tokens} = \text{input\_uncached} + \text{input\_cached} + \text{output\_standard} + \text{output\_reasoning}$$
 
@@ -67,7 +67,7 @@ Local estimation is implemented in [`src/warden/llm/tokenizer.py`](../../../src/
   - Raises `ContextWindowExceededError` **before** dispatching any external HTTP request.
 - **Explicit Unsupported Model Handling:**
   - If a model's tokenizer is not supported by `tiktoken`, the estimator explicitly returns `TokenEstimationResult(is_supported=False, estimated_tokens=None)`.
-  - Warden never guesses an arbitrary tokenizer or claims an estimate is accurate for an unknown model.
+  - Aegis never guesses an arbitrary tokenizer or claims an estimate is accurate for an unknown model.
 
 ---
 
@@ -139,7 +139,7 @@ Implemented in [`src/warden/llm/client.py`](../../../src/warden/llm/client.py):
 
 ## 9. Langfuse Source Attribution & Implementation Analysis
 
-Warden inspected and referenced the official Langfuse repository ([langfuse/langfuse](https://github.com/langfuse/langfuse)) as an architectural and algorithmic reference under the **MIT License**.
+Aegis inspected and referenced the official Langfuse repository ([langfuse/langfuse](https://github.com/langfuse/langfuse)) as an architectural and algorithmic reference under the **MIT License**.
 
 ### Inspected Langfuse Paths
 1. `worker/src/constants/default-model-prices.json` (pricing tiers, unit costs, regex aliases)
@@ -156,12 +156,12 @@ Warden inspected and referenced the official Langfuse repository ([langfuse/lang
 | **Model Pricing Registry** | Adapted | Adapted Langfuse's default model prices catalog and tier matcher algorithm to native Python `Decimal` micro-dollar arithmetic. |
 | **Provider Usage Extraction** | Adapted | Adapted OpenAI, Anthropic, and Gemini usage parsing to handle dictionaries, SDK objects, and LangChain metadata. |
 | **Local Token Estimation** | Adapted | Adapted Langfuse's `tiktoken` selection logic; added message framing and context-window gate. |
-| **Atomic Budget Reservation** | Independently Implemented | Built specifically for Warden's `run_id` lifecycle and concurrency requirements. |
+| **Atomic Budget Reservation** | Independently Implemented | Built specifically for Aegis's `run_id` lifecycle and concurrency requirements. |
 | **Sliding Window & Retries** | Independently Implemented | Built in native asyncio to avoid external Redis dependencies. |
-| **AuditJournal Telemetry** | Independently Implemented | Tailored to Warden's write-ahead audit event contracts. |
+| **AuditJournal Telemetry** | Independently Implemented | Tailored to Aegis's write-ahead audit event contracts. |
 
 ### Intentionally Not Reused
-- Langfuse's Next.js web application, frontend UI, Prisma ORM models, ClickHouse storage, and OpenTelemetry collector pipeline were intentionally **not** imported to keep Warden lightweight, self-contained, and security-centric.
+- Langfuse's Next.js web application, frontend UI, Prisma ORM models, ClickHouse storage, and OpenTelemetry collector pipeline were intentionally **not** imported to keep Aegis lightweight, self-contained, and security-centric.
 
 ### License & Attribution Notice
 Portions of the pricing catalog and usage extraction patterns are adapted from Langfuse:

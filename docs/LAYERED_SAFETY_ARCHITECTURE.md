@@ -1,14 +1,14 @@
-# Layered Safety Architecture: Multi-Tier Policy Evaluation in Warden
+# Layered Safety Architecture: Multi-Tier Policy Evaluation in Aegis
 
 ## 1. Executive Summary
 
-Warden governs autonomous AI agent actions through a single execution seam (`GuardedExecutor.execute()`). Within this seam, the `PolicyEngine` must decide whether an action is `allow`, `escalate` (HITL approval required), or `deny` (terminal rejection).
+Aegis governs autonomous AI agent actions through a single execution seam (`GuardedExecutor.execute()`). Within this seam, the `PolicyEngine` must decide whether an action is `allow`, `escalate` (HITL approval required), or `deny` (terminal rejection).
 
 Neither static rules alone nor deep LLM evaluators alone are sufficient:
 - **Static rules (AST/Regex)** are microsecond-fast and deterministic, but blind to subtle prompt injection, natural language intent, and contextual authorization drift.
 - **Deep LLMs (e.g., Granite Guardian 8B)** understand complex semantic context, but introducing 100–300ms latency and high compute cost on every mundane tool call creates unacceptable overhead and bottlenecking.
 
-Warden addresses this through a **3-Tier Layered Safety Pipeline**:
+Aegis addresses this through a **3-Tier Layered Safety Pipeline**:
 1. **L0: Deterministic Static Analysis** (`< 1ms`) — Syntax ASTs, path ACLs, regex patterns.
 2. **L1: Discriminative Fast Filter** (`10–25ms`) — DeBERTa-v3 sequence classification for injection & payload anomalies.
 3. **L2: Generative Semantic Reasoner** (`80–150ms`) — Granite Guardian (2B/8B) for contextual intent alignment and side-effect reasoning.
@@ -127,11 +127,11 @@ GuardedExecutor.execute(action, ctx)
 
 ## 5. Architectural Topology: Sidecar vs In-Process
 
-To maintain Warden's core design rules (pure Python core, no heavy PyTorch dependencies inside FastAPI):
+To maintain Aegis's core design rules (pure Python core, no heavy PyTorch dependencies inside FastAPI):
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Warden Kernel (FastAPI / LangGraph)                    │
+│ Aegis Kernel (FastAPI / LangGraph)                    │
 │                                                        │
 │  GuardedExecutor                                       │
 │    └─► PolicyEngine                                    │
@@ -152,7 +152,7 @@ To maintain Warden's core design rules (pure Python core, no heavy PyTorch depen
 ### Why not an API Gateway / LLM Proxy?
 1. **Seam Integrity (Lock 1)**: All governance must cross `GuardedExecutor.execute()`. External proxies split telemetry and bypass journal idempotency.
 2. **Write-Ahead Guarantees (Lock 3)**: An external proxy evaluates before the action is journaled, creating gaps where unrecorded actions could execute.
-3. **HITL Integration (Lock 2)**: Only Warden's `GuardedExecutor` knows how to emit `Pending(gate_request)` and park LangGraph threads via `run_gated()`.
+3. **HITL Integration (Lock 2)**: Only Aegis's `GuardedExecutor` knows how to emit `Pending(gate_request)` and park LangGraph threads via `run_gated()`.
 
 ---
 

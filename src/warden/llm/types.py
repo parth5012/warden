@@ -1,4 +1,4 @@
-"""Domain types for the Guarded LLM Client in Warden.
+"""Domain types for the Guarded LLM Client in Aegis.
 
 Includes token usage buckets, pricing records, rate-limiting configs,
 budget constraints, and telemetry event models.
@@ -156,12 +156,18 @@ class LLMUsageTelemetry:
     provider_request_id: str | None = None
     error_code: str | None = None
     error_detail: str | None = None
+    correlation_id: str | None = None
+    actor: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_journal_payload(self) -> dict[str, Any]:
         """Generate payload for 'llm_usage' journal event."""
         return {
             "action_id": self.action_id,
+            "run_id": self.run_id,
+            "thread_id": self.thread_id,
+            "actor": self.actor,
+            "correlation_id": self.correlation_id,
             "provider": self.provider,
             "model": self.model,
             "prompt_tokens": self.usage.prompt_tokens,
@@ -181,6 +187,7 @@ class LLMUsageTelemetry:
             "outcome_kind": self.outcome_kind,
             "error_code": self.error_code,
             "error_detail": self.error_detail,
+            "timestamp": self.timestamp,
         }
 
 
@@ -207,6 +214,14 @@ class ContextWindowExceededError(LLMClientError):
 
 class TokenLimitExceededError(LLMClientError):
     """Raised when request tokens exceed configured per-request limits."""
+
+
+class UnsupportedModelError(LLMClientError):
+    """Raised when token estimation cannot safely support the requested model."""
+
+
+class UnknownModelPricingError(LLMClientError):
+    """Raised when no configured price exists for the requested model/provider."""
 
 
 class BudgetExceededError(LLMClientError):

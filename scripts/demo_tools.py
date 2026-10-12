@@ -1,4 +1,4 @@
-"""Demo: 4 Phase-1 beats through ToolRouter.preview() + Groq draft stub.
+"""Demo: 4 Phase-1 beats through ToolRouter.preview() + guarded LLM stub.
 
 No real network/DB/Docker required.
 """
@@ -22,7 +22,7 @@ async def main() -> None:
         outcome = router.preview(make_tool_action(name, payload, "run_demo", "thr_demo"))
         print(f"{label}: {name} -> {type(outcome).__name__}: {outcome}")
     draft = await draft_with_groq("weekly ops report")
-    print("groq-draft:", draft.encode("ascii", "replace").decode())
+    print("llm-draft:", draft.encode("ascii", "replace").decode())
 
 
 if __name__ == "__main__":
