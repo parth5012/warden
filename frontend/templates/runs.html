@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Runs — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Agent Execution Runs</h1>
+    <p class="page-desc">Track and inspect thread runs recorded in LangGraph checkpoint store.</p>
+  </div>
+  <div>
+    <form method="GET" action="/runs" style="display: flex; gap: 0.5rem;">
+      <input type="text" name="thread_id" placeholder="Filter by Thread ID..." class="form-input" value="{{ filter_thread_id|default('') }}">
+      <button type="submit" class="btn btn-secondary">Filter</button>
+    </form>
+  </div>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Thread ID</th>
+        <th>Checkpoint Step</th>
+        <th>Status</th>
+        <th>State Values</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if runs %}
+        {% for run in runs %}
+        <tr>
+          <td style="font-family: var(--font-mono); font-weight: 600;">
+            <a href="/runs/{{ run.thread_id }}" style="color: var(--cyan); text-decoration: none;">{{ run.thread_id }}</a>
+          </td>
+          <td style="font-family: var(--font-mono);">Step {{ run.step|default(1) }}</td>
+          <td>
+            <span class="badge {% if run.is_parked %}badge-pending{% else %}badge-allowed{% endif %}">
+              {% if run.is_parked %}PARKED (GATE){% else %}ACTIVE / DONE{% endif %}
+            </span>
+          </td>
+          <td style="max-width: 350px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: var(--text-muted);">
+            {{ run.summary|default("—") }}
+          </td>
+          <td>
+            <a href="/runs/{{ run.thread_id }}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">View Graph</a>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="5" class="empty-state">
+            <div class="empty-state-title">No runs found</div>
+            <p>No active checkpoint threads match the criteria.</p>
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

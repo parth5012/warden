@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Run Detail — {{ thread_id }} — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div style="margin-bottom: 0.5rem;">
+      <a href="/runs" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem;">← Back to Runs</a>
+    </div>
+    <h1 class="page-title" style="font-family: var(--font-mono);">Thread: {{ thread_id }}</h1>
+    <p class="page-desc">Inspection timeline and checkpoint steps.</p>
+  </div>
+  <div>
+    {% if state_info and state_info.is_parked %}
+      <span class="badge badge-pending" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">PARKED ON APPROVAL</span>
+    {% else %}
+      <span class="badge badge-allowed" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">ACTIVE / COMPLETED</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+  <div class="card">
+    <div class="stat-label">Checkpoint Step</div>
+    <div class="stat-value">{{ state_info.step|default(1) }}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Next Node</div>
+    <div class="stat-value" style="font-size: 1.25rem;">{{ state_info.next_node|default("END") }}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Pending Gate</div>
+    <div class="stat-value" style="font-size: 1.25rem; color: {% if state_info.is_parked %}var(--amber){% else %}var(--green){% endif %};">
+      {% if state_info.is_parked %}YES{% else %}NONE{% endif %}
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+  <div class="card">
+    <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">Current State Values</h2>
+    <pre class="code-view">{{ state_info['values'] | tojson(indent=2) }}</pre>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">Decision Timeline & Steps</h2>
+    {% if history %}
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        {% for item in history %}
+        <div style="padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-secondary);">
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-family: var(--font-mono); margin-bottom: 0.35rem;">
+            <span style="font-weight: 600; color: var(--cyan);">Step {{ item.step }} — Node: {{ item.next_node|default("complete") }}</span>
+            <span style="color: var(--text-dim);">{{ item.created_at|default("—") }}</span>
+          </div>
+          <div style="font-size: 0.85rem; color: var(--text-muted);">
+            Config: thread_id=<code>{{ item.thread_id }}</code>, checkpoint_id=<code>{{ item.checkpoint_id }}</code>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p style="color: var(--text-dim);">No prior step history available for this thread.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Operator Dashboard</h1>
+    <p class="page-desc">Real-time telemetry, agent activity, and governance gates overview.</p>
+  </div>
+  <div>
+    <button class="btn btn-secondary" hx-get="/api/telemetry" hx-swap="none">Refresh Metrics</button>
+  </div>
+</div>
+
+<div class="grid-stats">
+  <div class="card">
+    <div class="stat-label">Pending HITL Gates</div>
+    <div class="stat-value" style="color: var(--amber);">{{ stats.pending_gates|default(0) }}</div>
+    <div class="stat-meta">Awaiting operator resolution</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Total Actions</div>
+    <div class="stat-value">{{ stats.total_actions|default(0) }}</div>
+    <div class="stat-meta">Across all threads</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Total Tokens</div>
+    <div class="stat-value">{{ stats.total_tokens|default(0) }}</div>
+    <div class="stat-meta">Groq LLM telemetry</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Est. Cost (USD)</div>
+    <div class="stat-value" style="color: var(--cyan);">${{ "%.4f"|format(stats.estimated_cost|default(0.0)) }}</div>
+    <div class="stat-meta">Token usage projection</div>
+  </div>
+</div>
+
+<div style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">Recent Agent Runs</h2>
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Thread ID</th>
+          <th>State / Next Node</th>
+          <th>Interrupt</th>
+          <th>Approved</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if recent_runs %}
+          {% for run in recent_runs %}
+          <tr>
+            <td style="font-family: var(--font-mono); font-weight: 600;">{{ run.thread_id }}</td>
+            <td>
+              <span class="badge {% if run.is_parked %}badge-pending{% else %}badge-allowed{% endif %}">
+                {{ run.next_node|default("completed") }}
+              </span>
+            </td>
+            <td>
+              {% if run.is_parked %}
+                <span class="badge badge-pending">Parked (Approval Gate)</span>
+              {% else %}
+                <span style="color: var(--text-dim);">None</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if run.approved is sameas true %}
+                <span class="badge badge-allowed">Approved</span>
+              {% elif run.approved is sameas false %}
+                <span class="badge badge-denied">Denied / Aborted</span>
+              {% else %}
+                <span class="badge badge-pending">Pending</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="/runs/{{ run.thread_id }}" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Inspect</a>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="5" class="empty-state">
+              <div class="empty-state-title">No runs recorded yet</div>
+              <p>Run a task through the ops assistant or CLI harness to generate telemetry.</p>
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
