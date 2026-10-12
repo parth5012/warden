@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Approval Queue — Warden{% endblock %}
+
+{% block content %}
+<section class="page-header approvals-page-header">
+  <div>
+    <p class="eyebrow">HUMAN-IN-THE-LOOP CONTROL</p>
+    <h1 class="page-title">Approval queue</h1>
+    <p class="page-subtitle">Inspect an action's scope and policy rationale before making a decision.</p>
+  </div>
+  <div class="queue-summary-chip"><span class="queue-summary-dot"></span>{{ review_actions|length }} require review</div>
+</section>
+
+<section class="approval-intro-grid">
+  <article class="approval-intro-card">
+    <span class="intro-label">Critical attention</span>
+    <strong>{{ review_actions|selectattr('risk', 'equalto', 'Critical')|list|length }}</strong>
+    <span>Critical-risk actions in this sample queue</span>
+  </article>
+  <article class="approval-intro-card">
+    <span class="intro-label">Escalated by policy</span>
+    <strong>{{ review_actions|selectattr('status', 'equalto', 'Escalated')|list|length }}</strong>
+    <span>Actions requiring elevated review</span>
+  </article>
+  <article class="approval-intro-card">
+    <span class="intro-label">Awaiting review</span>
+    <strong>{{ review_actions|selectattr('status', 'equalto', 'Pending')|list|length }}</strong>
+    <span>Actions currently marked pending</span>
+  </article>
+</section>
+
+<section class="card-panel approval-queue-panel">
+  <div class="panel-header approval-queue-heading">
+    <div>
+      <span class="panel-title">Actions requiring review</span>
+      <p class="panel-description">Open Blast Radius to inspect the immutable action snapshot and affected resources.</p>
+    </div>
+    <a href="/" class="panel-action-link">Back to command center →</a>
+  </div>
+  <div class="approval-toolbar">
+    <div class="filter-pills-bar" role="group" aria-label="Filter approvals by risk">
+      <button class="filter-pill active" type="button" data-filter="all" aria-pressed="true">All <span class="filter-count">{{ review_actions|length }}</span></button>
+      <button class="filter-pill" type="button" data-filter="critical" aria-pressed="false">Critical <span class="filter-count">0</span></button>
+      <button class="filter-pill" type="button" data-filter="high" aria-pressed="false">High <span class="filter-count">0</span></button>
+      <button class="filter-pill" type="button" data-filter="medium" aria-pressed="false">Medium <span class="filter-count">0</span></button>
+      <button class="filter-pill" type="button" data-filter="low" aria-pressed="false">Low <span class="filter-count">0</span></button>
+    </div>
+    <label class="queue-search-label" for="approval-search">Search queue</label>
+    <input id="approval-search" class="queue-search" type="search" placeholder="Search action, agent, resource…" autocomplete="off" aria-label="Search approval queue">
+  </div>
+  <div class="queue-results-meta" aria-live="polite"><span id="approval-results-count">{{ review_actions|length }} actions</span><span> · </span><span>Sorted by review priority</span></div>
+  <div class="approval-queue approval-queue-full" id="approval-queue-list">
+    {% for action in review_actions %}
+      {% include "components/approval_card.html" %}
+    {% else %}
+      <div class="queue-empty-state">
+        <div class="empty-state-icon">✓</div>
+        <h2>Queue clear</h2>
+        <p>No actions currently require human review in the loaded dataset.</p>
+      </div>
+    {% endfor %}
+  </div>
+  <p class="queue-footnote">Decision controls remain disabled until the authenticated, CSRF-protected server-side approval flow is connected.</p>
+</section>
+{% endblock %}

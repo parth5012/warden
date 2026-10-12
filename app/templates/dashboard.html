@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block title %}Command Center — Warden AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Command Center</h1>
+        <p class="page-subtitle">AI-agent activity overview, policy enforcement, and action governance · illustrative data</p>
+    </div>
+    <div>
+        <select class="btn-icon-toggle" style="background: var(--bg-surface); padding: 0.45rem 0.85rem;">
+            <option>Telemetry Window: Last 24 Hours</option>
+            <option>Telemetry Window: Last 7 Days</option>
+            <option>Telemetry Window: Last 30 Days</option>
+        </select>
+    </div>
+</div>
+
+<!-- Row 1: KPI Metrics Grid with Illustrative SVG sparklines -->
+<div class="kpi-grid">
+    <!-- Card 1: Total Actions -->
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">Total Actions</span>
+            <div class="kpi-icon-pill" style="background: var(--color-cyan-bg); color: var(--color-cyan-text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+        </div>
+        <div class="kpi-sparkline-row">
+            <div>
+                <span class="kpi-value tabular-nums">{{ stats.total }}</span>
+                <div style="margin-top: 0.25rem;">
+                    <span class="kpi-delta up-positive tabular-nums">Sample telemetry</span>
+                </div>
+            </div>
+            <!-- Trend Sparkline -->
+            <svg class="kpi-sparkline" viewBox="0 0 76 28" fill="none">
+                <path d="M2 24 L14 18 L26 21 L38 12 L50 15 L62 8 L74 4" stroke="var(--color-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 24 L14 18 L26 21 L38 12 L50 15 L62 8 L74 4 L74 28 L2 28 Z" fill="var(--color-cyan-bg)" opacity="0.4"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Card 2: Allowed Actions -->
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">Allowed</span>
+            <div class="kpi-icon-pill" style="background: var(--color-emerald-bg); color: var(--color-emerald-text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-sparkline-row">
+            <div>
+                <span class="kpi-value tabular-nums">{{ stats.allowed }}</span>
+                <div style="margin-top: 0.25rem;">
+                    <span class="kpi-delta up-positive tabular-nums">Sample records</span>
+                </div>
+            </div>
+            <!-- Trend Sparkline -->
+            <svg class="kpi-sparkline" viewBox="0 0 76 28" fill="none">
+                <path d="M2 22 L14 20 L26 16 L38 18 L50 10 L62 12 L74 6" stroke="var(--color-emerald)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 22 L14 20 L26 16 L38 18 L50 10 L62 12 L74 6 L74 28 L2 28 Z" fill="var(--color-emerald-bg)" opacity="0.4"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Card 3: Escalated / Human Review -->
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">Escalated</span>
+            <div class="kpi-icon-pill" style="background: var(--color-amber-bg); color: var(--color-amber-text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-sparkline-row">
+            <div>
+                <span class="kpi-value tabular-nums">{{ stats.escalated }}</span>
+                <div style="margin-top: 0.25rem;">
+                    <span class="kpi-delta up-warning tabular-nums">Human review</span>
+                </div>
+            </div>
+            <!-- Trend Sparkline -->
+            <svg class="kpi-sparkline" viewBox="0 0 76 28" fill="none">
+                <path d="M2 20 L14 22 L26 15 L38 19 L50 8 L62 14 L74 5" stroke="var(--color-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 20 L14 22 L26 15 L38 19 L50 8 L62 14 L74 5 L74 28 L2 28 Z" fill="var(--color-amber-bg)" opacity="0.4"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Card 4: Denied / Policy Blocked -->
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">Denied</span>
+            <div class="kpi-icon-pill" style="background: var(--color-ruby-bg); color: var(--color-ruby-text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-sparkline-row">
+            <div>
+                <span class="kpi-value tabular-nums">{{ stats.denied }}</span>
+                <div style="margin-top: 0.25rem;">
+                    <span class="kpi-delta down-danger tabular-nums">Sample records</span>
+                </div>
+            </div>
+            <!-- Trend Sparkline -->
+            <svg class="kpi-sparkline" viewBox="0 0 76 28" fill="none">
+                <path d="M2 8 L14 12 L26 10 L38 18 L50 14 L62 22 L74 24" stroke="var(--color-ruby)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 8 L14 12 L26 10 L38 18 L50 14 L62 22 L74 24 L74 28 L2 28 Z" fill="var(--color-ruby-bg)" opacity="0.4"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Card 5: Active Autonomous Agents -->
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">Active Agents</span>
+            <div class="kpi-icon-pill" style="background: var(--color-purple-bg); color: var(--color-purple-text);">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-sparkline-row">
+            <div>
+                <span class="kpi-value tabular-nums">{{ stats.active_agents }}</span>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                    3 executing • 1 parked
+                </div>
+            </div>
+            <!-- Pulse Wave -->
+            <svg class="kpi-sparkline" viewBox="0 0 76 28" fill="none">
+                <path d="M2 14 L18 14 L24 4 L30 24 L36 10 L42 18 L48 14 L74 14" stroke="var(--color-purple-text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+    </div>
+</div>
+
+<!-- Row 2: Tactical Visual Telemetry -->
+<div class="dashboard-split-row">
+    <!-- Action Activity Bar Chart -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                Action Activity Timeline
+            </span>
+            <div style="display: flex; gap: 0.85rem; font-size: 0.75rem;">
+                <span style="color: var(--color-emerald-text);">● Allowed</span>
+                <span style="color: var(--color-amber-text);">● Escalated</span>
+                <span style="color: var(--color-ruby-text);">● Denied</span>
+            </div>
+        </div>
+        <div class="activity-bars">
+            {% for bar in activity_data %}
+            <div class="bar-group" title="{{ bar.time }}: {{ bar.allowed }} allowed, {{ bar.escalated }} escalated, {{ bar.denied }} denied (Total: {{ bar.total }})">
+                <div class="bar-segment denied" style="height: {{ bar.denied * 7 }}px;"></div>
+                <div class="bar-segment escalated" style="height: {{ bar.escalated * 6 }}px; margin-top: 2px;"></div>
+                <div class="bar-segment allowed" style="height: {{ bar.allowed * 5 }}px; margin-top: 2px;"></div>
+                <div class="bar-axis-label">{{ bar.time }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Risk Distribution Donut Chart -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                Risk Distribution · All Demo Records
+            </span>
+        </div>
+        <div class="donut-container">
+            <div class="donut-svg-wrapper">
+                <svg viewBox="0 0 36 36" style="width: 100%; height: 100%; transform: rotate(-90deg);">
+                    <circle cx="18" cy="18" r="15.915" fill="transparent" stroke="var(--bg-surface-elevated)" stroke-width="3.5"></circle>
+                    {% for item in risk_distribution %}
+                    {% if item.count > 0 %}<circle cx="18" cy="18" r="15.915" fill="transparent" stroke="{{ item.color }}" stroke-width="3.5" stroke-dasharray="{{ item.dasharray }}" stroke-dashoffset="{{ item.dashoffset }}"></circle>{% endif %}
+                    {% endfor %}
+                </svg>
+                <div class="donut-center-text">
+                    <span class="donut-center-number">{{ stats.total }}</span>
+                    <span class="donut-center-label">Records</span>
+                </div>
+            </div>
+            <div class="donut-legend">
+                {% for item in risk_distribution %}
+                <div class="legend-item">
+                    <span><span class="legend-color-dot" style="background: {{ item.color }};"></span>{{ item.risk }}{% if item.risk == 'Low' %} Risk{% endif %}</span>
+                    <span class="code-font" style="color: var(--text-muted);">{{ item.count }} ({{ item.percentage }}%)</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Policy Violations List -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                Policy Violations
+            </span>
+            <a href="#policies" class="panel-action-link">Rules →</a>
+        </div>
+        <div class="violations-list">
+            <div class="violation-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-critical">Critical</span>
+                    <span>Mass deletion >3 files in root</span>
+                </div>
+                <span class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">2m ago</span>
+            </div>
+            <div class="violation-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-high">High</span>
+                    <span>Unapproved production schema ALTER</span>
+                </div>
+                <span class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">12m ago</span>
+            </div>
+            <div class="violation-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-medium">Medium</span>
+                    <span>Outbound HTTPS socket outside VPC</span>
+                </div>
+                <span class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">1h ago</span>
+            </div>
+            <div class="violation-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-medium">Medium</span>
+                    <span>Non-whitelisted dependency install</span>
+                </div>
+                <span class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">1h ago</span>
+            </div>
+            <div class="violation-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="badge badge-low">Low</span>
+                    <span>Excessive file read rate (burst)</span>
+                </div>
+                <span class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">3h ago</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 3: Interception Gate & Recent Audit Log -->
+<div class="dashboard-double-row">
+    <!-- Interception Gate (Pending Approvals) -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                Interception Gate (Pending Review)
+            </span>
+            <span style="font-size: 0.78rem; color: var(--color-cyan-text); font-family: var(--font-mono);">
+                {{ pending_actions|length }} Actions Paused in Sandbox
+            </span>
+        </div>
+
+        <!-- Filter Pills Bar -->
+        <div class="filter-pills-bar">
+            <button class="filter-pill active" data-filter="all">All ({{ pending_actions|length }})</button>
+            <button class="filter-pill" data-filter="critical">Critical Risk</button>
+            <button class="filter-pill" data-filter="high">High Risk</button>
+            <button class="filter-pill" data-filter="medium">Medium</button>
+        </div>
+
+        <!-- Queue Cards -->
+        <div class="approval-queue">
+            {% for action in pending_actions %}
+                {% include "components/approval_card.html" %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Audit Actions Table -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                Write-Ahead Audit Journal
+            </span>
+            <a href="#audit" class="panel-action-link">View Full WAL →</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table-custom">
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Agent</th>
+                        <th>Verdict</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recent_actions %}
+                    <tr>
+                        <td style="font-weight: 500;">
+                            <div>{{ item.title }}</div>
+                            <span class="code-font" style="font-size: 0.78rem; color: var(--text-muted);">hash: {{ item.hash }}</span>
+                        </td>
+                        <td class="code-font" style="color: var(--text-secondary);">{{ item.agent }}</td>
+                        <td>
+                            {% if item.status == 'Allowed' or item.status == 'Approved' %}
+                            <span class="badge" style="background: var(--color-emerald-bg); color: var(--color-emerald-text); border: 1px solid var(--color-emerald-border);">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                {{ item.status }}
+                            </span>
+                            {% elif item.status == 'Escalated' %}
+                            <span class="badge" style="background: var(--color-amber-bg); color: var(--color-amber-text); border: 1px solid var(--color-amber-border);">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                {{ item.status }}
+                            </span>
+                            {% else %}
+                            <span class="badge" style="background: var(--color-ruby-bg); color: var(--color-ruby-text); border: 1px solid var(--color-ruby-border);">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                {{ item.status }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="code-font" style="color: var(--text-muted); font-size: 0.75rem;">{{ item.time_ago }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Row 4: AI Agent Telemetry, System Nodes & Real-Time Event Stream -->
+<div class="dashboard-triple-row">
+    <!-- Autonomous Agents Telemetry -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>
+                AI Agent Fleet
+            </span>
+            <span class="badge" style="background: var(--color-emerald-bg); color: var(--color-emerald-text);">3 Active</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+            <div class="telemetry-row">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span class="code-font" style="font-weight: 600;">CodeAgent</span>
+                        <span class="badge badge-agent-model">claude-3-5-sonnet</span>
+                    </div>
+                    <span style="color: var(--color-emerald-text); font-size: 0.78rem;">● Active • Sandboxed subproc</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <span class="tabular-nums" style="font-size: 0.75rem; color: var(--text-muted);">4 actions</span>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 76%; background: var(--color-emerald);"></div></div>
+                </div>
+            </div>
+
+            <div class="telemetry-row">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span class="code-font" style="font-weight: 600;">DBAgent</span>
+                        <span class="badge badge-agent-model">gpt-4o</span>
+                    </div>
+                    <span style="color: var(--color-emerald-text); font-size: 0.78rem;">● Active • Schema lease held</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <span class="tabular-nums" style="font-size: 0.75rem; color: var(--text-muted);">6 actions</span>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 64%; background: var(--color-emerald);"></div></div>
+                </div>
+            </div>
+
+            <div class="telemetry-row">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span class="code-font" style="font-weight: 600;">OpsAgent</span>
+                        <span class="badge badge-agent-model">llama-3-70b</span>
+                    </div>
+                    <span style="color: var(--color-amber-text); font-size: 0.78rem;">● Paused at Interception Gate</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <span class="tabular-nums" style="font-size: 0.75rem; color: var(--text-muted);">3 actions</span>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 25%; background: var(--color-amber);"></div></div>
+                </div>
+            </div>
+
+            <div class="telemetry-row">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span class="code-font" style="font-weight: 600;">ResearchAgent</span>
+                        <span class="badge badge-agent-model">gemini-1.5-pro</span>
+                    </div>
+                    <span style="color: var(--color-emerald-text); font-size: 0.78rem;">● Active • Read-only loop</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <span class="tabular-nums" style="font-size: 0.75rem; color: var(--text-muted);">5 actions</span>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 52%; background: var(--color-cyan);"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Governance Infrastructure Nodes -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                Governance Nodes
+            </span>
+            <span class="badge" style="background: var(--color-emerald-bg); color: var(--color-emerald-text);">● Healthy</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+            <div class="telemetry-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    <span>L1/L2 Policy Engine (Yash)</span>
+                </div>
+                <span class="code-font" style="color: var(--color-emerald-text);">12 ms</span>
+            </div>
+            <div class="telemetry-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    <span>Hash-Chained Audit Log (Gourav)</span>
+                </div>
+                <span class="code-font" style="color: var(--color-emerald-text);">18 ms</span>
+            </div>
+            <div class="telemetry-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    <span>Execution Sandbox (Parth)</span>
+                </div>
+                <span class="code-font" style="color: var(--color-emerald-text);">24 ms</span>
+            </div>
+            <div class="telemetry-row">
+                <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <span>Trace & Rollback Runner (Yashit)</span>
+                </div>
+                <span class="code-font" style="color: var(--color-emerald-text);">16 ms</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Autonomous Event Stream -->
+    <div class="card-panel">
+        <div class="panel-header">
+            <span class="panel-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                Live Event Stream
+            </span>
+            <span style="font-size: 0.75rem; color: var(--color-emerald-text); display: flex; align-items: center; gap: 0.35rem;">
+                <span class="pulse-dot"></span> Live SSE
+            </span>
+        </div>
+        <div class="events-stream">
+            <div class="event-line">
+                <span class="event-timestamp tabular-nums">14:32:11</span>
+                <span class="event-dot" style="background: var(--color-cyan);"></span>
+                <span>Action <strong class="code-font">act_7129e3</strong> proposed by CodeAgent</span>
+            </div>
+            <div class="event-line">
+                <span class="event-timestamp tabular-nums">14:32:12</span>
+                <span class="event-dot" style="background: var(--color-amber);"></span>
+                <span>Policy Engine evaluated rule <strong class="code-font">SEC-FS-04</strong>: Escalated</span>
+            </div>
+            <div class="event-line">
+                <span class="event-timestamp tabular-nums">14:32:15</span>
+                <span class="event-dot" style="background: var(--color-ruby);"></span>
+                <span>Gate request parked in LangGraph checkpoint #chk_91a0</span>
+            </div>
+            <div class="event-line">
+                <span class="event-timestamp tabular-nums">14:32:18</span>
+                <span class="event-dot" style="background: var(--color-cyan);"></span>
+                <span>Blast radius analysis compiled: 5 files affected (-48.3 MB)</span>
+            </div>
+            <div class="event-line">
+                <span class="event-timestamp tabular-nums">14:32:20</span>
+                <span class="event-dot" style="background: var(--color-emerald);"></span>
+                <span>Operator notification dispatched to Raghav (Security Lead)</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
