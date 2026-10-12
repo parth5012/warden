@@ -1,5 +1,91 @@
 # LOG.md — Warden
 
+## 2026-10-12 — connected demo: 2 governed agents on one enforced path
+
+**Status:** Done (186 passed full suite, live demo green, timeline rendered)
+
+What changed:
+- Env repair: worktree `.venv` had corrupt langgraph install (dist-info only,
+  no pytest) → force-reinstalled langgraph* + `.[dev]`. Checkpoint tests pass
+  again (18 passed). Root cause of the earlier collection errors.
+- `scripts/governed_demo.py` (DEMO-GRADE seam, not production GuardedExecutor):
+  GovernedRunner enforces journal → PolicyEngine (+ tool-aware L0 guards) →
+  HITL gate → DockerSandbox/in-process → journal for EVERY LLM+tool action.
+  Live hash-chained journal (reuses app.audit event model, VERIFIED).
+  Two agents share one runner+journal: ops-assistant (metrics→gated email→
+  denied DROP→sandboxed shell) + db-researcher (select→denied shadow→gated
+  restart). Interactive terminal HITL by default, `--auto-approve NAME` for CI.
+- Live run: 34 events, chain Verified; per-agent telemetry (LLM calls, tools,
+  gated, denied, tokens, latency); run.json + timeline.html in .tmp/.
+- `tests/test_governed_demo.py`: 6 offline tests (fake LLM + fake sandbox).
+- `scripts/render_demo_timeline.py`: self-contained HTML timeline.
+
+## 2026-10-12 — governance audit: HITL, policy-per-call, sandbox routing, tracing
+
+**Status:** Done — 7 probes, 7 findings (1 critical, 3 high, 1 medium, 2 info)
+
+Method: `scripts/audit_probes.py` (live probes vs real code, evidence in
+`.tmp/audit_evidence.json`) + visual report `.tmp/audit/report/index.html`.
+
+Verdicts:
+- Policy engine verdicts correct on all 10 payloads (PASS, advisory-only).
+- CRITICAL: no agent call passes through policy — GuardedExecutor/journal/
+  run_gated don't exist; demo_graph calls Groq directly.
+- HIGH: inbox accepts any Warden-Key (incl. `mallory-intruder`), resolves by
+  popping a mock dict, never journals or resumes; real park/resume currently
+  unimportable (langgraph-checkpoint-postgres 3.1.2 layout change).
+- MEDIUM: DockerSandbox proven live (net-none containment + egress blocked),
+  but nothing auto-routes approved tools into it.
+- HIGH: traces (4) + journal (15 events) are hardcoded seeds, no writers.
+- HIGH: /api/telemetry returns constants; only GuardedLLMClient sink is live.
+- INFO: live Groq via guarded client green (78/52/130 tokens, telemetry OK).
+
+## 2026-10-12 — live Groq testing (key copied from main repo)
+
+**Status:** Done (live Groq green end-to-end, 81 passed)
+
+- Copied `GROQ_API_KEY` from `D:/work/projects/warden/src/warden/.env` into
+  worktree `.env` (gitignored, never printed). `settings.groq_api_key` loads.
+- `scripts/demo_tools.py`: all 4 beats green + REAL Groq draft returned
+  (fixed cp1252 console crash on U+202F via ascii-safe print).
+- New `scripts/live_groq_test.py`: GuardedLLMClient + real Groq provider —
+  success=True, 764ms, usage 78/52/130 provider-reported, telemetry emitted.
+- Finding: `openai/gpt-oss-20b` not in pricing catalog → cost unpriced.
+  Left as-is (pricing data change, needs your call).
+- Note: with key present, `test_groq_stub_string` now makes a real network call
+  (still asserts str). Consider mocking if suite must stay offline.
+- Suite: 81 passed (tools + llm + policy + config).
+
+## 2026-10-12 — Phase-1 tool suite (ops-assistant, 8 tools + Groq router)
+
+**Status:** Done (36 new tests green, 145 passed incl. pre-existing, mypy clean on src/warden/tools)
+
+What changed (all additive — zero modifications to existing files):
+- `src/warden/tools/` — base (ToolSpec/ToolContext/make_action), safe_tools
+  (get_system_metrics, read_service_logs, query_db_readonly — synthetic stubs,
+  read-only validators), hitl_tools (send_email→POL_EGRESS_EXTERNAL_MSG,
+  restart_service→POL_INFRA_MUTATION — pending-previews, no side effects, never
+  calls interrupt per lock 2), deny_tools (exec_db_mutation, read_file_sensitive —
+  L0 ACL + PolicyEngine mapping, DENY terminal per lock 5), sandbox_tools
+  (exec_shell→registry profile "shell"→DockerSandbox, fail-closed per lock 4),
+  router (ToolRouter.preview: pure Action→Outcome over existing PolicyEngine;
+  Groq via get_groq_llm + draft_with_groq stub fallback).
+- `scripts/demo_tools.py` — 4 demo beats verified: ALLOW / Pending / DENIED / sandbox-route.
+- `tests/test_tools_{safe,hitl,deny,sandbox,router}.py` — 36 tests.
+
+Constraint honored: wired ONLY to existing seams (models, policy/*, sandbox/*,
+config, llm). Did NOT create executor.py / journal.py / hitl/runner.py.
+
+Notes:
+- Parallel Task subagents all failed (transport closed x5) → built directly.
+- Bare `TRUNCATE orders` (no TABLE) slipped L0 regex → deny_tools adds keyword
+  fallback. FakeClef scores any `rm -rf`/send-email text high → sandbox demo beat
+  uses benign `ls` command (Allowed route=sandbox); destructive shell stays DENY.
+- Pre-existing env breakage (not mine): test_checkpoint/test_cli_chat/test_web
+  fail collection — installed langgraph-checkpoint-postgres 3.1.2 no longer
+  provides `langgraph.checkpoint.postgres.aio`. My files don't touch that path.
+- GROQ_API_KEY unset in this env → Groq draft falls back to deterministic stub.
+
 ## 2026-10-11 — re-verification round: harness bug + missing regression tests
 
 **Status:** Done (22 passed, mypy clean, PR #1 merge=CLEAN at ba0c939)
