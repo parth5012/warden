@@ -1,5 +1,20 @@
 # LOG.md — Warden
 
+## 2026-10-12 — PostgreSQL WAL persistence & login audit integration (PR #20)
+
+**Status:** Done (263 passed, 6 skipped full suite, 0 mypy errors across 76 files)
+
+What changed:
+- Integrated PostgreSQL WAL persistence via `PostgresJournal` adapter in `app/audit.py`.
+  - Connects using `psycopg_pool.ConnectionPool` reading `CONNECTION_STRING` / `POSTGRES_URI`.
+  - Durable append-only tables (`journal_events`, `audit_logs`, `login_audit`) with SHA-256 hash chaining and `(run_id, action_id, kind)` idempotency index.
+  - Implements both `JournalRepository` (for `/audit` UI) and `AuditJournal` (for `GuardedExecutor` engine).
+  - Graceful fallback to `InMemoryDemoJournal` when Postgres is unconfigured or unavailable.
+- Integrated `@audit_login` and `@login_required` decorators in `src/warden/wrappers.py` with sensitive data scrubbing and `login_audit` ledger logging.
+- Mounted `/api/auth` and `/auth` routes via `backend/api/auth.py`.
+- Reconciled conflicts with upstream `origin/main` (preserved GuardedExecutor seam, OpsAssistant live chat, panel projections, and strict typing).
+- Verified: 263 passed, 6 skipped; mypy clean across 76 source files.
+
 ## 2026-10-12 — Live governed OpsAssistant wired into chat UI
 
 **Status:** Done (240 passed + 6 skipped full suite, 0 mypy errors across 61 files, live /chat round-trip 200)

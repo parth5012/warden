@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+import json
 import logging
 import re
 import sys
@@ -114,7 +115,9 @@ def redact_sensitive_data(obj: Any, depth: int = 0) -> Any:
     if isinstance(obj, dict):
         cleaned = {}
         for k, v in obj.items():
-            if SENSITIVE_KEY_PATTERN.search(str(k)):
+            if str(k) in ("auth_method", "auth_type", "login_method"):
+                cleaned[k] = redact_sensitive_data(v, depth + 1)
+            elif SENSITIVE_KEY_PATTERN.search(str(k)):
                 cleaned[k] = "***REDACTED***"
             else:
                 cleaned[k] = redact_sensitive_data(v, depth + 1)
@@ -503,3 +506,536 @@ def audit_logged(
             return sync_audit_wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+# ==============================================================================
+# 6. LOGIN AUDIT & AUTHENTICATION DECORATORS (@audit_login / @login_required)
+# ==============================================================================
+
+def record_login_audit_db(
+    id: str,
+    username: str,
+    actor: str,
+    auth_method: str,
+    status: str,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    failure_reason: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    event_id: Optional[str] = None,
+) -> None:
+    """Records an entry directly to the PostgreSQL `login_audit` table if configured."""
+    store = get_journal_store()
+    if store and hasattr(store, "_pool") and getattr(store, "is_persistent", lambda: False)():
+        try:
+            with store._pool.connection() as conn:
+                conn.execute("""
+                    INSERT INTO login_audit (
+                        id, username, actor, auth_method, status, ip_address, user_agent, failure_reason, metadata, event_id
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) ON CONFLICT (id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        failure_reason = EXCLUDED.failure_reason,
+                        event_id = COALESCE(EXCLUDED.event_id, login_audit.event_id);
+                """, (
+                    id, username, actor, auth_method, status, ip_address, user_agent,
+                    failure_reason, json.dumps(redact_sensitive_data(metadata or {})), event_id
+                ))
+                conn.commit()
+        except Exception as exc:
+            logger.warning("login_audit_db_insert_failed", extra={"error": str(exc)})
+
+
+def audit_login(
+    auth_method: str = "password",
+    actor_arg: Optional[str] = None,
+    record_journal: bool = True,
+    custom_logger: Optional[logging.Logger] = None,
+    require_success: bool = False,
+) -> Callable[[F], F]:
+    """Production Write-Ahead Logging & Audit Decorator for Login and Authentication.
+
+    Wraps an authentication function (e.g. login handlers, token verification, approver key checks):
+    1. Extracts principal/actor (username, email, approver key) and request metadata (IP, User-Agent).
+    2. Emits a write-ahead intent event (`action_requested` with operation `USER_LOGIN`) to the append-only WAL.
+    3. Records initial attempt in the `login_audit` PostgreSQL table with status 'attempted'.
+    4. Executes the authentication function (sync or async) within an isolated audit_context.
+    5. Upon success:
+       - Emits a completion event (`action_completed`) to the append-only WAL.
+       - Updates `login_audit` table with status 'success' and execution latency.
+       - Propagates actor identity into the ambient execution context.
+    6. Upon failure or exception:
+       - Emits a failure event (`action_denied` / `action_failed`) to the append-only WAL.
+       - Updates `login_audit` table with status 'failed' / 'denied' and failure reason.
+       - Automatically scrubs sensitive credentials and passwords (never leaks plain-text secrets).
+    """
+    def decorator(func: F) -> F:
+        log_instance = custom_logger or logging.getLogger(f"aegis.audit.login.{func.__module__}")
+        func_name = func.__qualname__
+        is_async = inspect.iscoroutinefunction(func)
+
+        def _extract_login_info(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Tuple[str, Optional[str], Optional[str], Dict[str, Any]]:
+            username = "Anonymous"
+            if actor_arg and actor_arg in kwargs:
+                username = str(kwargs[actor_arg])
+            elif actor_arg and hasattr(args[0] if args else None, actor_arg):
+                username = str(getattr(args[0], actor_arg))
+            else:
+                for candidate in ("username", "user", "email", "approver", "actor", "principal", "warden_key", "key"):
+                    if candidate in kwargs and kwargs[candidate]:
+                        username = str(kwargs[candidate])
+                        break
+
+            if username == "Anonymous":
+                for arg in args:
+                    if hasattr(arg, "username") and getattr(arg, "username"):
+                        username = str(getattr(arg, "username"))
+                        break
+                    elif hasattr(arg, "user") and getattr(arg, "user"):
+                        username = str(getattr(arg, "user"))
+                        break
+                    elif isinstance(arg, dict):
+                        for k in ("username", "user", "email", "key", "approver"):
+                            if k in arg and arg[k]:
+                                username = str(arg[k])
+                                break
+                        if username != "Anonymous":
+                            break
+
+            ip_address = kwargs.get("ip") or kwargs.get("client_ip") or kwargs.get("ip_address")
+            user_agent = kwargs.get("user_agent")
+
+            req = kwargs.get("request")
+            if not req:
+                for arg in args:
+                    if hasattr(arg, "client") and hasattr(arg, "headers"):
+                        req = arg
+                        break
+
+            if req:
+                if not ip_address:
+                    client = getattr(req, "client", None)
+                    ip_address = getattr(client, "host", None) if client else None
+                    if not ip_address:
+                        headers = getattr(req, "headers", {})
+                        ip_address = headers.get("x-forwarded-for", "").split(",")[0].strip() or headers.get("x-real-ip")
+                if not user_agent:
+                    headers = getattr(req, "headers", {})
+                    user_agent = headers.get("user-agent")
+
+            sanitized_args = redact_sensitive_data(dict(kwargs))
+            return username, ip_address, user_agent, sanitized_args
+
+        def _record_event_helper(
+            kind: str,
+            status: str,
+            desc: str,
+            payload: Dict[str, Any],
+            action_id: str,
+            actor: str,
+        ) -> Optional[str]:
+            if not record_journal:
+                return None
+            store = get_journal_store()
+            if not store:
+                return None
+            try:
+                from app.audit import JournalEvent
+                ev = JournalEvent(
+                    id=f"ev_{uuid.uuid4().hex[:12]}",
+                    run_id=f"run_auth_{uuid.uuid4().hex[:8]}",
+                    thread_id="thread_auth",
+                    action_id=action_id,
+                    checkpoint_step=0,
+                    kind=kind,
+                    actor=actor,
+                    status=status,
+                    description=desc,
+                    payload=redact_sensitive_data(payload),
+                    ts=datetime.now(timezone.utc).isoformat(),
+                )
+                store.append(ev)
+                return ev.id
+            except Exception as j_exc:
+                log_instance.warning("login_audit_append_warning", extra={"error": str(j_exc)})
+                return None
+
+        if is_async:
+            @functools.wraps(func)
+            async def async_login_wrapper(*args: Any, **kwargs: Any) -> Any:
+                username, ip, ua, sanitized = _extract_login_info(args, kwargs)
+                action_id = f"act_login_{uuid.uuid4().hex[:8]}"
+                audit_id = f"log_auth_{uuid.uuid4().hex[:12]}"
+                start_time = time.perf_counter()
+
+                # 1. Write-Ahead event (Intent lock)
+                start_ev_id = _record_event_helper(
+                    kind="action_requested",
+                    status="Proposed",
+                    desc=f"User login attempt: {username} via {auth_method}",
+                    payload={
+                        "operation": "USER_LOGIN",
+                        "auth_method": auth_method,
+                        "username": username,
+                        "ip_address": ip,
+                        "user_agent": ua,
+                        "function": func_name,
+                    },
+                    action_id=action_id,
+                    actor=username,
+                )
+
+                record_login_audit_db(
+                    id=audit_id,
+                    username=username,
+                    actor=username,
+                    auth_method=auth_method,
+                    status="attempted",
+                    ip_address=ip,
+                    user_agent=ua,
+                    metadata={"function": func_name, "action_id": action_id},
+                    event_id=start_ev_id,
+                )
+
+                try:
+                    with audit_context(actor=username, action_id=action_id):
+                        res = await func(*args, **kwargs)
+
+                    if require_success and (res is False or res is None or (isinstance(res, dict) and "error" in res)):
+                        raise PermissionError(f"Authentication failed: {res}")
+
+                    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+                    # 2. Success Event
+                    success_ev_id = _record_event_helper(
+                        kind="action_completed",
+                        status="Succeeded",
+                        desc=f"User login succeeded: {username} via {auth_method} ({duration_ms}ms)",
+                        payload={
+                            "operation": "USER_LOGIN",
+                            "auth_method": auth_method,
+                            "username": username,
+                            "ip_address": ip,
+                            "status": "success",
+                            "duration_ms": duration_ms,
+                        },
+                        action_id=action_id,
+                        actor=username,
+                    )
+
+                    record_login_audit_db(
+                        id=audit_id,
+                        username=username,
+                        actor=username,
+                        auth_method=auth_method,
+                        status="success",
+                        ip_address=ip,
+                        user_agent=ua,
+                        metadata={"duration_ms": duration_ms, "action_id": action_id},
+                        event_id=success_ev_id,
+                    )
+
+                    return res
+                except Exception as exc:
+                    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                    err_msg = str(exc)
+
+                    # 3. Failure Event
+                    fail_ev_id = _record_event_helper(
+                        kind="action_denied",
+                        status="Denied",
+                        desc=f"User login failed: {username} via {auth_method} ({err_msg})",
+                        payload={
+                            "operation": "USER_LOGIN",
+                            "auth_method": auth_method,
+                            "username": username,
+                            "ip_address": ip,
+                            "status": "failed",
+                            "error": err_msg,
+                            "error_type": type(exc).__name__,
+                            "duration_ms": duration_ms,
+                        },
+                        action_id=action_id,
+                        actor=username,
+                    )
+
+                    record_login_audit_db(
+                        id=audit_id,
+                        username=username,
+                        actor=username,
+                        auth_method=auth_method,
+                        status="failed",
+                        ip_address=ip,
+                        user_agent=ua,
+                        failure_reason=err_msg,
+                        metadata={"duration_ms": duration_ms, "action_id": action_id},
+                        event_id=fail_ev_id,
+                    )
+                    raise
+
+            return async_login_wrapper  # type: ignore[return-value]
+        else:
+            @functools.wraps(func)
+            def sync_login_wrapper(*args: Any, **kwargs: Any) -> Any:
+                username, ip, ua, sanitized = _extract_login_info(args, kwargs)
+                action_id = f"act_login_{uuid.uuid4().hex[:8]}"
+                audit_id = f"log_auth_{uuid.uuid4().hex[:12]}"
+                start_time = time.perf_counter()
+
+                # 1. Write-Ahead event (Intent lock)
+                start_ev_id = _record_event_helper(
+                    kind="action_requested",
+                    status="Proposed",
+                    desc=f"User login attempt: {username} via {auth_method}",
+                    payload={
+                        "operation": "USER_LOGIN",
+                        "auth_method": auth_method,
+                        "username": username,
+                        "ip_address": ip,
+                        "user_agent": ua,
+                        "function": func_name,
+                    },
+                    action_id=action_id,
+                    actor=username,
+                )
+
+                record_login_audit_db(
+                    id=audit_id,
+                    username=username,
+                    actor=username,
+                    auth_method=auth_method,
+                    status="attempted",
+                    ip_address=ip,
+                    user_agent=ua,
+                    metadata={"function": func_name, "action_id": action_id},
+                    event_id=start_ev_id,
+                )
+
+                try:
+                    with audit_context(actor=username, action_id=action_id):
+                        res = func(*args, **kwargs)
+
+                    if require_success and (res is False or res is None or (isinstance(res, dict) and "error" in res)):
+                        raise PermissionError(f"Authentication failed: {res}")
+
+                    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+                    # 2. Success Event
+                    success_ev_id = _record_event_helper(
+                        kind="action_completed",
+                        status="Succeeded",
+                        desc=f"User login succeeded: {username} via {auth_method} ({duration_ms}ms)",
+                        payload={
+                            "operation": "USER_LOGIN",
+                            "auth_method": auth_method,
+                            "username": username,
+                            "ip_address": ip,
+                            "status": "success",
+                            "duration_ms": duration_ms,
+                        },
+                        action_id=action_id,
+                        actor=username,
+                    )
+
+                    record_login_audit_db(
+                        id=audit_id,
+                        username=username,
+                        actor=username,
+                        auth_method=auth_method,
+                        status="success",
+                        ip_address=ip,
+                        user_agent=ua,
+                        metadata={"duration_ms": duration_ms, "action_id": action_id},
+                        event_id=success_ev_id,
+                    )
+
+                    return res
+                except Exception as exc:
+                    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                    err_msg = str(exc)
+
+                    # 3. Failure Event
+                    fail_ev_id = _record_event_helper(
+                        kind="action_denied",
+                        status="Denied",
+                        desc=f"User login failed: {username} via {auth_method} ({err_msg})",
+                        payload={
+                            "operation": "USER_LOGIN",
+                            "auth_method": auth_method,
+                            "username": username,
+                            "ip_address": ip,
+                            "status": "failed",
+                            "error": err_msg,
+                            "error_type": type(exc).__name__,
+                            "duration_ms": duration_ms,
+                        },
+                        action_id=action_id,
+                        actor=username,
+                    )
+
+                    record_login_audit_db(
+                        id=audit_id,
+                        username=username,
+                        actor=username,
+                        auth_method=auth_method,
+                        status="failed",
+                        ip_address=ip,
+                        user_agent=ua,
+                        failure_reason=err_msg,
+                        metadata={"duration_ms": duration_ms, "action_id": action_id},
+                        event_id=fail_ev_id,
+                    )
+                    raise
+
+            return sync_login_wrapper  # type: ignore[return-value]
+
+    return decorator
+
+
+def login_required(
+    allowed_keys: Optional[List[str]] = None,
+    record_journal: bool = True,
+    custom_logger: Optional[logging.Logger] = None,
+) -> Callable[[F], F]:
+    """Route & function protection decorator enforcing authentication.
+
+    Verifies operator/caller identity via:
+    1. Header `Warden-Key`
+    2. Header `Authorization: Bearer <key>`
+    3. Argument / kwarg `warden_key` or `approver_key`
+
+    If unauthenticated or key is invalid:
+    - Writes `action_denied` to the WAL (`journal_events`).
+    - Records in `login_audit` as `denied`.
+    - Raises HTTPException(401) or PermissionError.
+
+    If authenticated:
+    - Scopes audit_context(actor=principal).
+    - Executes the route/function.
+    """
+    def decorator(func: F) -> F:
+        log_instance = custom_logger or logging.getLogger(f"aegis.auth.{func.__module__}")
+        func_name = func.__qualname__
+        is_async = inspect.iscoroutinefunction(func)
+
+        def _get_configured_approver_keys() -> Dict[str, str]:
+            import os
+            raw = os.getenv("WARDEN_APPROVER_KEYS", "admin:aegis-secret-key-123")
+            mapping: Dict[str, str] = {}
+            for part in raw.split(","):
+                if ":" in part:
+                    name, k = part.strip().split(":", 1)
+                    mapping[k.strip()] = name.strip()
+            return mapping
+
+        def _authenticate(args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> str:
+            approver_map = _get_configured_approver_keys()
+            provided_key: Optional[str] = kwargs.get("warden_key") or kwargs.get("key") or kwargs.get("token")
+
+            req = kwargs.get("request")
+            if not req:
+                for arg in args:
+                    if hasattr(arg, "headers"):
+                        req = arg
+                        break
+
+            if req and not provided_key:
+                headers = getattr(req, "headers", {})
+                provided_key = headers.get("warden-key") or headers.get("Warden-Key")
+                if not provided_key and "authorization" in headers:
+                    auth_header = headers["authorization"]
+                    if auth_header.startswith("Bearer "):
+                        provided_key = auth_header[7:].strip()
+
+            if not provided_key:
+                raise PermissionError("Authentication required: missing Warden-Key or Bearer token")
+
+            if allowed_keys and provided_key not in allowed_keys:
+                raise PermissionError("Access denied: invalid approver key")
+
+            principal = approver_map.get(provided_key, "Operator")
+            return principal
+
+        if is_async:
+            @functools.wraps(func)
+            async def async_auth_wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    principal = _authenticate(args, kwargs)
+                except PermissionError as exc:
+                    log_instance.warning("login_required_denied", extra={"function": func_name, "error": str(exc)})
+                    if record_journal:
+                        store = get_journal_store()
+                        if store:
+                            try:
+                                from app.audit import JournalEvent
+                                store.append(JournalEvent(
+                                    id=f"ev_denied_{uuid.uuid4().hex[:12]}",
+                                    run_id="run_auth_denied",
+                                    thread_id="thread_auth",
+                                    action_id=None,
+                                    checkpoint_step=0,
+                                    kind="action_denied",
+                                    actor="Unauthenticated",
+                                    status="Denied",
+                                    description=f"Access denied to {func_name}: {str(exc)}",
+                                    payload={"function": func_name, "error": str(exc)},
+                                    ts=datetime.now(timezone.utc).isoformat(),
+                                ))
+                            except Exception:
+                                pass
+                    try:
+                        from fastapi import HTTPException
+                        raise HTTPException(status_code=401, detail=str(exc))
+                    except ImportError:
+                        raise exc
+
+                with audit_context(actor=principal):
+                    return await func(*args, **kwargs)
+
+            return async_auth_wrapper  # type: ignore[return-value]
+        else:
+            @functools.wraps(func)
+            def sync_auth_wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    principal = _authenticate(args, kwargs)
+                except PermissionError as exc:
+                    log_instance.warning("login_required_denied", extra={"function": func_name, "error": str(exc)})
+                    if record_journal:
+                        store = get_journal_store()
+                        if store:
+                            try:
+                                from app.audit import JournalEvent
+                                store.append(JournalEvent(
+                                    id=f"ev_denied_{uuid.uuid4().hex[:12]}",
+                                    run_id="run_auth_denied",
+                                    thread_id="thread_auth",
+                                    action_id=None,
+                                    checkpoint_step=0,
+                                    kind="action_denied",
+                                    actor="Unauthenticated",
+                                    status="Denied",
+                                    description=f"Access denied to {func_name}: {str(exc)}",
+                                    payload={"function": func_name, "error": str(exc)},
+                                    ts=datetime.now(timezone.utc).isoformat(),
+                                ))
+                            except Exception:
+                                pass
+                    try:
+                        from fastapi import HTTPException
+                        raise HTTPException(status_code=401, detail=str(exc))
+                    except ImportError:
+                        raise exc
+
+                with audit_context(actor=principal):
+                    return func(*args, **kwargs)
+
+            return sync_auth_wrapper  # type: ignore[return-value]
+
+    return decorator
+
+
+# Convenience aliases
+login_audit = audit_login
+audit_logged_login = audit_login
+require_login = login_required

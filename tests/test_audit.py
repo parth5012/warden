@@ -51,7 +51,7 @@ def test_audit_page_loads_successfully(client: TestClient) -> None:
     # Assert branding & page titles
     assert "Aegis" in text
     assert "WAL &amp; Audit Log" in text or "WAL & Audit Log" in text
-    assert "DEMO JOURNAL" in text
+    assert "DEMO JOURNAL" in text or "POSTGRES PERSISTENT" in text
 
     # Assert navigation active status
     assert 'class="nav-link active"' in text or 'active_page == \'audit\'' in text
@@ -83,7 +83,7 @@ def test_htmx_partial_swap(client: TestClient) -> None:
 
 def test_filter_by_kind(client: TestClient) -> None:
     """Verifies filtering by specific event kind."""
-    resp = client.get("/audit?kind=action_denied", headers={"HX-Request": "true"})
+    resp = client.get("/audit?kind=action_denied&limit=50", headers={"HX-Request": "true"})
     assert resp.status_code == 200
     text = resp.text
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Dict
 import pytest
 from app.audit import JOURNAL_STORE
@@ -174,8 +175,9 @@ async def test_audit_logged_records_failure_event() -> None:
         raise PermissionError("Access denied by sandbox security monitor")
 
     with pytest.raises(PermissionError):
-        with audit_context(run_id="run_fail_1"):
-            await faulty_task(action_id="act_fail_01")
+        uid = uuid.uuid4().hex[:6]
+        with audit_context(run_id=f"run_fail_{uid}"):
+            await faulty_task(action_id=f"act_fail_{uid}")
 
     # Both start and failure event should be recorded in journal
     new_count = len(JOURNAL_STORE._events)

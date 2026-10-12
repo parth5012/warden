@@ -27,6 +27,7 @@ from backend.api.runs import router as runs_router
 from backend.api.audit import router as audit_router
 from backend.api.telemetry import router as telemetry_router
 from backend.api.policies import router as policies_router
+from backend.api.auth import router as auth_router
 from frontend.views import router as frontend_router
 
 from app.chat import router as chat_router
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix="/api")
     app.include_router(telemetry_router, prefix="/api")
     app.include_router(policies_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
 
     # Also mount health/ready at root per standard Kubernetes/container probes
     app.include_router(health_router)

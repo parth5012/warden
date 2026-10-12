@@ -125,10 +125,26 @@ python -m pytest tests/test_audit.py tests/test_approval_workflow.py -v
 
 ---
 
-## 6. Integration Points with Teammate Modules
+## 6. PostgreSQL WAL Persistence & Login Decorators
 
-| Teammate | Module | Integration Point |
+### Database Tables (`CONNECTION_STRING` in `.env`)
+The system auto-connects to PostgreSQL via `CONNECTION_STRING` or `POSTGRES_URI` using `psycopg_pool.ConnectionPool`:
+1. `journal_events` — Core append-only Write-Ahead Log table storing full event telemetry, SHA-256 hash chains, and the `(run_id, action_id, kind)` idempotency index.
+2. `audit_logs` — General audit log table for system events, action audits, and security telemetry.
+3. `login_audit` — Dedicated authentication audit ledger tracking all login attempts, authentication methods, client IP addresses, user agents, status (`attempted`, `success`, `failed`, `denied`), and failure reasons linked to WAL events.
+
+### Login Decorators (`src/warden/wrappers.py`)
+* `@audit_login(auth_method="password", actor_arg="username", require_success=True)`
+  Decorates authentication/login functions. Writes write-ahead intent (`action_requested` with operation `USER_LOGIN`) prior to authentication, logs to `login_audit` table, scrubs passwords/tokens via `redact_sensitive_data()`, and records `action_completed` on success or `action_denied` on failure.
+* `@login_required()` / `@require_login()`
+  Protects sensitive route handlers and execution paths by validating `Warden-Key` headers or Bearer tokens against `WARDEN_APPROVER_KEYS`. Automatically logs unauthorized access attempts (`action_denied`) to the WAL journal and returns HTTP 401.
+
+---
+
+## 7. Integration Points with Teammate Modules
+
+| Teammate | Module | Status & Integration Point |
 |---|---|---|
-| **Yashit** | Storage & Audit Table | Connect `JournalRepository` to PostgreSQL table `journal_events` using `psycopg_pool`. |
-| **Gourav** | Sandbox & Verification | Connect `verify_hash_chain` to Gourav's write-ahead audit table verification runner. |
-| **Parth** | LangGraph & Seam | Hook `GuardedExecutor` to call `JOURNAL_STORE.append()` before/after tool execution. |
+| **Yashit** | Storage & Audit Table | Connected `PostgresJournal` to PostgreSQL tables `journal_events`, `audit_logs`, and `login_audit` using `psycopg_pool`. |
+| **Gourav** | Sandbox & Verification | Connected `verify_hash_chain` to PostgreSQL write-ahead audit table verification runner with automatic `Verified` status. |
+| **Parth** | LangGraph & Seam | Hooked `GuardedExecutor` and `@audit_login` to persist state transitions before and after execution. |

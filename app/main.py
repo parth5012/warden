@@ -19,6 +19,7 @@ from app.leases import router as leases_router
 from app.traces import router as traces_router
 from app.sandbox import router as sandbox_router
 from app.chat import router as chat_router
+from backend.api.auth import router as auth_router
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -32,6 +33,8 @@ app.include_router(policies_router)
 app.include_router(leases_router)
 app.include_router(traces_router)
 app.include_router(sandbox_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(auth_router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
