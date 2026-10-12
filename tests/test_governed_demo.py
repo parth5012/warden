@@ -60,7 +60,7 @@ async def test_safe_tool_allowed_and_journaled(monkeypatch: pytest.MonkeyPatch) 
 async def test_drop_table_denied_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = make_runner(monkeypatch)
     out = await runner.run_tool(agent="a", run_id="r", thread_id="t",
-                                tool="exec_db_mutation", payload={"sql": "DROP TABLE users;"})
+                                tool="exec_db_mutation", payload={"sql": "DROP TABLE users CASCADE;"})
     assert isinstance(out, Denied)
     kinds = [e.kind for e in runner.journal.events]
     assert "action_denied" in kinds and "gate_requested" not in kinds

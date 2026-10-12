@@ -29,9 +29,15 @@ def test_send_email_pending() -> None:
     assert out.gate_request.context["rule_id"] == "POL_EGRESS_EXTERNAL_MSG"
 
 
-def test_drop_table_denied_terminal() -> None:
-    out = ToolRouter(ENG).preview(_act("exec_db_mutation", {"sql": "DROP TABLE users;"}))  # type: ignore[arg-type]
+def test_drop_database_denied_terminal() -> None:
+    out = ToolRouter(ENG).preview(_act("exec_db_mutation", {"sql": "DROP DATABASE users;"}))  # type: ignore[arg-type]
     assert isinstance(out, Denied)
+
+
+def test_scoped_drop_table_pending() -> None:
+    out = ToolRouter(ENG).preview(_act("exec_db_mutation", {"sql": "DROP TABLE users;"}))  # type: ignore[arg-type]
+    assert isinstance(out, Pending)
+    assert out.gate_request.context["rule_id"] == "scoped-ddl-drop-table"
 
 
 def test_injection_denied() -> None:

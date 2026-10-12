@@ -64,7 +64,7 @@ class ToolRouter:
         return [
             {"beat": "1-safe-reads", "tools": "get_system_metrics + query_db_readonly", "outcome": "ALLOW fast-path"},
             {"beat": "2-hitl-gate", "tools": "send_email", "outcome": "Pending POL_EGRESS_EXTERNAL_MSG"},
-            {"beat": "3-hard-deny", "tools": "exec_db_mutation DROP TABLE", "outcome": "DENIED terminal"},
+            {"beat": "3-hard-deny", "tools": "exec_db_mutation DROP TABLE ... CASCADE", "outcome": "DENIED terminal"},
             {"beat": "4-sandbox", "tools": "exec_shell rm -rf", "outcome": "sandbox containment"},
         ]
 

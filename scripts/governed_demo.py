@@ -391,7 +391,7 @@ async def ops_assistant(runner: GovernedRunner, run_id: str) -> list[str]:
                                          "subject": "Weekly ops report", "body": "All green."})
     notes.append(f"email: {type(out).__name__}")
     out = await runner.run_tool(agent="ops-assistant", run_id=run_id, thread_id=tid,
-                                tool="exec_db_mutation", payload={"sql": "DROP TABLE old_logs;"})
+                                tool="exec_db_mutation", payload={"sql": "DROP TABLE old_logs CASCADE;"})
     notes.append(f"drop: {type(out).__name__}")
     out = await runner.run_tool(agent="ops-assistant", run_id=run_id, thread_id=tid,
                                 tool="exec_shell", payload={"command": "ls /workspace && echo cleaned"})

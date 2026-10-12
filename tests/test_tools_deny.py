@@ -11,9 +11,26 @@ from warden.tools.deny_tools import check_db_mutation, check_path, evaluate_text
 ENG = PolicyEngine(scorer=FakeInjectionScorer(default=0.05))
 
 
-def test_drop_table_denied() -> None:
-    denied = check_db_mutation({"sql": "DROP TABLE users;"}, ENG)
+def test_drop_database_denied() -> None:
+    denied = check_db_mutation({"sql": "DROP DATABASE users;"}, ENG)
     assert denied is not None and denied.policy == "no-destructive-sql"
+
+
+def test_drop_table_cascade_denied() -> None:
+    denied = check_db_mutation({"sql": "DROP TABLE users CASCADE;"}, ENG)
+    assert denied is not None and denied.policy == "no-destructive-sql"
+
+
+def test_drop_table_multistatement_denied() -> None:
+    denied = check_db_mutation({"sql": "DROP TABLE users; DROP TABLE accounts;"}, ENG)
+    assert denied is not None and denied.policy == "no-destructive-sql"
+
+
+def test_scoped_drop_table_not_denied() -> None:
+    assert check_db_mutation({"sql": "DROP TABLE users;"}, ENG) is None
+    verdict = ENG.evaluate("exec_db_mutation", {"sql": "DROP TABLE users;"})
+    assert verdict.decision.value == "escalate"
+    assert verdict.policy == "scoped-ddl-drop-table"
 
 
 def test_truncate_denied() -> None:
@@ -51,4 +68,4 @@ def test_benign_path_allowed() -> None:
 
 async def test_run_db_mutation_raises_terminal() -> None:
     with pytest.raises(PermissionError, match="DENIED"):
-        await run_db_mutation({"sql": "DROP TABLE old_logs;"}, ENG)
+        await run_db_mutation({"sql": "DROP DATABASE old_logs;"}, ENG)

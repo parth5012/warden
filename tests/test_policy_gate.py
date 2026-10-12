@@ -22,12 +22,44 @@ def make_engine(**kwargs: Any) -> PolicyEngine:
     )
 
 
-def test_l0_drop_table_denies_terminal() -> None:
+def test_l0_drop_database_denies_terminal() -> None:
     engine = make_engine()
-    verdict = engine.evaluate("db.query", {"sql": "DROP TABLE orders"})
+    verdict = engine.evaluate("db.query", {"sql": "DROP DATABASE orders"})
     assert verdict.decision == PolicyDecision.DENY
     assert verdict.layer == "L0-static"
     assert verdict.policy == "no-destructive-sql"
+
+
+def test_l0_drop_table_cascade_denies_terminal() -> None:
+    engine = make_engine()
+    verdict = engine.evaluate("db.query", {"sql": "DROP TABLE orders CASCADE"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.layer == "L0-static"
+    assert verdict.policy == "no-destructive-sql"
+
+
+def test_l0_scoped_drop_table_escalates() -> None:
+    engine = make_engine()
+    verdict = engine.evaluate("db.query", {"sql": "DROP TABLE orders"})
+    assert verdict.decision == PolicyDecision.ESCALATE
+    assert verdict.layer == "L0-static"
+    assert verdict.policy == "scoped-ddl-drop-table"
+
+
+def test_l0_scoped_fs_batch_delete_escalates() -> None:
+    engine = make_engine()
+    verdict = engine.evaluate("shell.exec", {"cmd": "rm -rf /workspace/tmp/cache"})
+    assert verdict.decision == PolicyDecision.ESCALATE
+    assert verdict.layer == "L0-static"
+    assert verdict.policy == "scoped-fs-batch-delete"
+
+
+def test_l0_batch_delete_files_action_escalates() -> None:
+    engine = make_engine()
+    verdict = engine.evaluate("batch_delete_files", {"target_resource": "/workspace/tmp/"})
+    assert verdict.decision == PolicyDecision.ESCALATE
+    assert verdict.layer == "L0-static"
+    assert verdict.policy == "scoped-fs-batch-delete"
 
 
 def test_l0_rm_rf_denies() -> None:
@@ -132,3 +164,55 @@ def test_gate_thresholds_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.gate_clean_threshold == 0.1
     assert s.clef_account_id == "acct123"
     assert s.clef_model == "@cf/cloudflare/clef-flash"
+
+
+def test_unbounded_shell_trailing_target_bypass() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("shell.exec", {"cmd": "rm -rf /workspace/tmp/cache /"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-shell"
+
+
+def test_unbounded_shell_chained_command_bypass() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("shell.exec", {"cmd": "rm -rf /workspace/tmp/cache && rm -rf /"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-shell"
+
+
+def test_multiline_multistatement_drop_table_denies() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("db.query", {"sql": "DROP TABLE users;\nDROP TABLE accounts;"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-sql"
+
+
+def test_multistatement_drop_table_mixed_denies() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("db.query", {"sql": "DROP TABLE users;\nDROP VIEW audit_view;"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-sql"
+
+
+def test_scoped_fs_sibling_prefix_leak_denied() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("shell.exec", {"cmd": "rm -rf /workspace/tmp_production"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-shell"
+
+
+def test_multiline_shell_rm_unscoped_bypass() -> None:
+    engine = PolicyEngine()
+    verdict = engine.evaluate("shell.exec", {"cmd": "rm -rf /workspace/tmp/cache\nrm -rf /var/data"})
+    assert verdict.decision == PolicyDecision.DENY
+    assert verdict.policy == "no-destructive-shell"
+
+
+def test_is_scoped_path_traversal() -> None:
+    from warden.policy.layers_static import is_scoped_path
+
+    assert not is_scoped_path("/workspace/tmp/../etc/shadow")
+    assert not is_scoped_path("/workspace/tmp/..")
+    assert is_scoped_path("/workspace/tmp")
+    assert is_scoped_path("/workspace/tmp/")
+    assert is_scoped_path("/workspace/tmp/cache_01.db")

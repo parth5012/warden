@@ -12,7 +12,7 @@ import re
 
 from warden.models import Denied
 from warden.policy.engine import PolicyDecision, PolicyEngine, PolicyError, PolicyVerdict
-from warden.policy.layers_static import action_text, find_static_violation
+from warden.policy.layers_static import action_text, find_static_violation, is_scoped_drop_table
 from warden.tools.base import ToolSpec
 
 EXEC_DB_MUTATION_SPEC = ToolSpec(
@@ -64,8 +64,11 @@ def evaluate_text(
 
 
 def check_db_mutation(payload: dict[str, Any], engine: PolicyEngine | None = None) -> Denied | None:
-    """Return Denied if the SQL must be refused, else None (allowed-preview)."""
+    """Return Denied if the SQL must be refused, else None (allowed-preview or escalate)."""
     sql = str(payload.get("sql", ""))
+    is_scoped, _ = is_scoped_drop_table(sql)
+    if is_scoped:
+        return None
     hit = find_static_violation(f"exec_db_mutation\n{sql}")
     if hit is None and _DESTRUCTIVE_RE.search(sql):
         hit = "no-destructive-sql"

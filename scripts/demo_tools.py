@@ -15,7 +15,7 @@ async def main() -> None:
     beats = [
         ("1-safe-reads", "get_system_metrics", {"service": "orders", "metric": "cpu"}),
         ("2-hitl-gate", "send_email", {"recipient": "ops-team@example.com", "subject": "s", "body": "b"}),
-        ("3-hard-deny", "exec_db_mutation", {"sql": "DROP TABLE old_logs;"}),
+        ("3-hard-deny", "exec_db_mutation", {"sql": "DROP TABLE old_logs CASCADE;"}),
         ("4-sandbox", "exec_shell", {"command": "ls /workspace && echo cleaned"}),
     ]
     for label, name, payload in beats:

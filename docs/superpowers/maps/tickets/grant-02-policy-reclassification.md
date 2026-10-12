@@ -1,7 +1,7 @@
 # Grant-02: Reclassify scoped destructive intent to escalate
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: none (frontier) · Claim: _unclaimed_
+Blocked by: none (frontier) · Claim: `@me`
 
 ## Question
 
@@ -16,9 +16,9 @@ Shift *parseable, bounded* destructive intent from terminal `deny` to grantable 
 
 ## Done when
 
-- [ ] Scoped patterns escalate with the new rule ids; unbounded patterns still deny.
-- [ ] `uv run pytest -q` green; `uv run --extra dev python -m mypy src tests` clean.
-- [ ] Docstrings on all new public symbols; `from __future__ import annotations` in new modules.
+- [x] Scoped patterns escalate with the new rule ids; unbounded patterns still deny.
+- [x] `uv run pytest -q` green; `uv run --extra dev python -m mypy src tests` clean.
+- [x] Docstrings on all new public symbols; `from __future__ import annotations` in new modules.
 
 ## Context pointers
 
@@ -27,4 +27,4 @@ Shift *parseable, bounded* destructive intent from terminal `deny` to grantable 
 
 ## Resolution
 
-_unresolved — agent: append rule ids + test counts + verification output, then mark boxes._
+Reclassified scoped destructive patterns: single explicit table DDL (`scoped-ddl-drop-table`) and bounded file deletion under `/workspace/tmp/` (`scoped-fs-batch-delete`) now escalate at L0 static policy layer. Unbounded actions (`DROP DATABASE`, multi-statement DDL, `CASCADE`, unconfined `rm -rf /`, secret/path traversal) remain terminal `deny` (`no-destructive-sql`, `no-destructive-shell`). Tests pass: 273 passed, 6 skipped; mypy strict clean (0 errors in 65 files).
