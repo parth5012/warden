@@ -40,6 +40,14 @@ class ToolRouter:
             return Error(reason="governance_unavailable")
         if verdict.decision == PolicyDecision.DENY:
             return Denied(reason=verdict.reason, policy=verdict.policy)
+        from warden.tools import deny_tools
+        static = None
+        if action.name == "exec_db_mutation":
+            static = deny_tools.check_db_mutation(action.payload, self._policy)
+        elif action.name == "read_file_sensitive":
+            static = deny_tools.check_path(str(action.payload.get("path", "")))
+        if static is not None:
+            return static
         if action.name in _ESCALATING_TOOLS or verdict.decision == PolicyDecision.ESCALATE:
             rule = _RULE_FOR_TOOL.get(action.name, verdict.policy)
             gate = GateRequest(

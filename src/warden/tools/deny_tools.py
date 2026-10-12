@@ -37,7 +37,7 @@ _BLOCKED_TOKENS = ("OPENAI_API_KEY", "WARDEN_PG_URI", "GROQ_API_KEY")
 # Bare destructive keywords (covers "TRUNCATE orders" without TABLE, which the
 # L0 static regex misses). Keep in sync with safe_tools._WRITE_KW_RE.
 _DESTRUCTIVE_RE = re.compile(
-    r"\b(drop|truncate|delete|insert|update|alter|create|grant|revoke)\b",
+    r"\b(drop|truncate|delete|insert|update|alter|create|grant|revoke|into|copy|merge|call|do|execute|lock|pg_terminate_backend|pg_sleep)\b",
     re.IGNORECASE,
 )
 
@@ -87,7 +87,7 @@ def check_path(path: str) -> Denied | None:
     if ".." in lowered:
         return Denied(reason="Path traversal blocked by ACL policy", policy="path-acl")
     base = PurePath(lowered).name.lower()
-    if base in _BLOCKED_BASENAMES or lowered in ("/etc/shadow", "/etc/passwd"):
+    if base in _BLOCKED_BASENAMES or base.endswith((".pem", ".key")) or base.startswith(".env"):
         return Denied(reason="Secret file blocked by ACL policy", policy="path-acl")
     if any(tok in path for tok in _BLOCKED_TOKENS):
         return Denied(reason="Secret token in path blocked by policy", policy="secret-acl")

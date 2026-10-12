@@ -36,7 +36,7 @@ def main() -> None:
             f"<td>{html.escape(str(e['actor']))}</td>"
             f"<td style='color:#8b949e'>{html.escape(str(e['thread_id']))}</td>"
             f"<td>{html.escape(str(e['status']))}</td>"
-            f"<td>{html.escape(str(e['description']))[:140]}</td>"
+            f"<td>{html.escape(str(e['description'])[:140])}</td>"
             f"<td style='color:#8b949e;font-size:12px'>{html.escape(str(e['ts']))[11:19]}</td>"
             "</tr>"
         )

@@ -144,7 +144,15 @@ class GovernedRunner:
                             thread_id=thread_id, actor=agent, action_id=action.id,
                             status="Proposed", description=f"LLM call: {prompt[:80]}",
                             payload={"model": settings.groq_model})
-        verdict = self.policy.evaluate(action.name, {"prompt": prompt})
+        try:
+            verdict = self.policy.evaluate(action.name, {"prompt": prompt})
+        except Exception:
+            self.journal.append(EventKind.ACTION_FAILED.value, run_id=run_id,
+                                thread_id=thread_id, actor="PolicyEngine",
+                                action_id=action.id, status="Failed",
+                                description="Policy infra failure — fail closed",
+                                payload={})
+            return Error(reason="governance_unavailable")
         if verdict.decision == PolicyDecision.DENY:
             tele.denied += 1
             self.journal.append(EventKind.ACTION_DENIED.value, run_id=run_id,
@@ -339,6 +347,11 @@ class GovernedRunner:
             else:
                 raise RuntimeError(f"no execution route for {tool}")
         except SandboxUnavailable as exc:
+            self.journal.append(EventKind.ACTION_FAILED.value, run_id=run_id,
+                                thread_id=thread_id, actor="GovernedRunner",
+                                action_id=action.id, status="Failed",
+                                description=f"{tool} sandbox unavailable — fail closed",
+                                payload={"error": str(exc)[:200]})
             return Error(reason="governance_unavailable")
         except Exception as exc:
             latency = int((time.monotonic() - start) * 1000)
@@ -412,7 +425,7 @@ def terminal_approver(name: str) -> Callable[[GateRequest], Awaitable[GateDecisi
         print(f"\n  [HITL] {rule} parked gate {gate.gate_id}")
         print(f"  [HITL] action={gate.action.name} payload={json.dumps(gate.action.payload)[:200]}")
         ans = input("  [HITL] approve or deny? [approve/deny] ").strip().lower()
-        verdict = GateVerdict.APPROVE if ans in ("approve", "a", "yes", "y", "") else GateVerdict.DENY
+        verdict = GateVerdict.APPROVE if ans in ("approve", "a", "yes", "y") else GateVerdict.DENY
         return GateDecision(gate_id=gate.gate_id, verdict=verdict,
                             reason=f"terminal decision by {name}", decided_by=name)
     return decide

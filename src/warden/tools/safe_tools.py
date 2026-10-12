@@ -19,7 +19,7 @@ _LOG_ROOTS = ("D:/tmp/logs", "D:\\tmp\\logs", "/tmp/logs", "/var/log")
 _INJECTION_RE = re.compile(r"ignore\s+(previous|all)\s+instructions", re.IGNORECASE)
 _STACKED_RE = re.compile(r";\s*\S")
 _WRITE_KW_RE = re.compile(
-    r"\b(drop|truncate|delete|insert|update|alter|create|grant|revoke)\b",
+    r"\b(drop|truncate|delete|insert|update|alter|create|grant|revoke|into|copy|merge|call|do|execute|lock|pg_terminate_backend|pg_sleep)\b",
     re.IGNORECASE,
 )
 

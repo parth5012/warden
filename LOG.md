@@ -44,7 +44,7 @@ Verdicts:
 
 **Status:** Done (live Groq green end-to-end, 81 passed)
 
-- Copied `GROQ_API_KEY` from `D:/work/projects/warden/src/warden/.env` into
+- Copied `GROQ_API_KEY` from the main checkout's `.env` into
   worktree `.env` (gitignored, never printed). `settings.groq_api_key` loads.
 - `scripts/demo_tools.py`: all 4 beats green + REAL Groq draft returned
   (fixed cp1252 console crash on U+202F via ascii-safe print).

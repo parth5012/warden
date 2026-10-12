@@ -53,8 +53,9 @@ def test_demo_flow_four_beats() -> None:
     assert len(ToolRouter(ENG).describe_demo_flow()) == 4
 
 
-async def test_groq_stub_string() -> None:
-    assert isinstance(await draft_with_groq("weekly ops report"), str)
+async def test_groq_stub_string(monkeypatch) -> None:
+    monkeypatch.setattr("warden.tools.router.get_router_llm", lambda: None)
+    assert "stub draft" in await draft_with_groq("weekly ops report")
 
 
 def test_action_kind_tool() -> None:
