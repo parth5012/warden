@@ -103,6 +103,21 @@ class GateDecision:
 
 
 # ---------------------------------------------------------------------------
+# Execution Context
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ExecutionContext:
+    """Execution metadata propagated across the executor seam."""
+
+    actor: str = "agent"
+    run_id: str | None = None
+    thread_id: str | None = None
+    checkpoint_step: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
 # Checkpoint state inspection types
 # ---------------------------------------------------------------------------
 

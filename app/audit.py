@@ -14,11 +14,12 @@ import csv
 import hashlib
 import io
 import json
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -32,117 +33,34 @@ router = APIRouter(tags=["WAL & Audit Log"])
 
 
 # ==============================================================================
-# 1. CANONICAL EVENT MODEL (Compatible with DATA_MODEL.md § 5 & models.py)
+# 1. CANONICAL EVENT MODEL & HASHING (Imported from warden.journal kernel)
 # ==============================================================================
 
-class EventKind(str, Enum):
-    ACTION_REQUESTED = "action_requested"
-    POLICY_EVALUATED = "policy_evaluated"
-    ACTION_DENIED = "action_denied"
-    GATE_REQUESTED = "gate_requested"
-    GATE_DECIDED = "gate_decided"
-    EXECUTION_QUEUED = "execution_queued"
-    EXECUTION_STARTED = "execution_started"
-    ACTION_COMPLETED = "action_completed"
-    ACTION_FAILED = "action_failed"
-    CHECKPOINT_CREATED = "checkpoint_created"
-    LEASE_EVALUATED = "lease_evaluated"
+from warden.journal import (
+    AuditJournal,
+    EventKind,
+    InMemoryJournal,
+    JournalEvent,
+    VerificationStatus,
+    calculate_event_hash,
+    canonical_event_bytes,
+    get_journal,
+    verify_hash_chain,
+)
 
-
-class VerificationStatus(str, Enum):
-    VERIFIED = "Verified"
-    FAILED = "Verification failed"
-    NOT_VERIFIED = "Not verified"
-    UNAVAILABLE = "Verification unavailable"
-
-
-@dataclass(frozen=True)
-class JournalEvent:
-    id: str
-    run_id: str
-    thread_id: str
-    action_id: Optional[str]
-    checkpoint_step: Optional[int]
-    kind: str
-    actor: str
-    status: str
-    description: str
-    payload: Dict[str, Any]
-    ts: str
-    prev_hash: Optional[str] = None
-    event_hash: Optional[str] = None
-    verification_status: VerificationStatus = VerificationStatus.UNAVAILABLE
-
-    def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        d["verification_status"] = self.verification_status.value
-        return d
-
-
-# ==============================================================================
-# 2. CRYPTOGRAPHIC HASHING & CHAIN VERIFICATION
-# ==============================================================================
-
-def canonical_event_bytes(event_dict: Dict[str, Any]) -> bytes:
-    """Serializes event fields (excluding hash and verification status) to canonical sorted JSON."""
-    payload_to_hash = {
-        "id": event_dict.get("id"),
-        "run_id": event_dict.get("run_id"),
-        "thread_id": event_dict.get("thread_id"),
-        "action_id": event_dict.get("action_id"),
-        "checkpoint_step": event_dict.get("checkpoint_step"),
-        "kind": event_dict.get("kind"),
-        "actor": event_dict.get("actor"),
-        "status": event_dict.get("status"),
-        "description": event_dict.get("description"),
-        "payload": event_dict.get("payload", {}),
-        "ts": event_dict.get("ts"),
-        "prev_hash": event_dict.get("prev_hash"),
-    }
-    return json.dumps(
-        payload_to_hash,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def calculate_event_hash(event_dict: Dict[str, Any]) -> str:
-    """Computes SHA-256 digest of canonical event bytes."""
-    return hashlib.sha256(canonical_event_bytes(event_dict)).hexdigest()
-
-
-def verify_hash_chain(events: List[JournalEvent]) -> Tuple[VerificationStatus, Optional[str]]:
-    """Verifies that events form an unbroken SHA-256 cryptographic hash chain.
-
-    Returns:
-        (VerificationStatus, failure_detail_message)
-    """
-    if not events:
-        return VerificationStatus.NOT_VERIFIED, "No events to verify"
-
-    # Chain order is insertion order; callers must pass events as appended.
-    sorted_events = list(events)
-    expected_prev_hash: Optional[str] = None
-
-    for idx, ev in enumerate(sorted_events):
-        if ev.prev_hash != expected_prev_hash:
-            return (
-                VerificationStatus.FAILED,
-                f"Broken chain at event #{idx} ({ev.id}): expected prev_hash '{expected_prev_hash}', got '{ev.prev_hash}'"
-            )
-
-        calc_hash = calculate_event_hash(ev.to_dict())
-        if ev.event_hash != calc_hash:
-            return (
-                VerificationStatus.FAILED,
-                f"Hash mismatch at event #{idx} ({ev.id}): recorded '{ev.event_hash}', calculated '{calc_hash}'"
-            )
-
-        expected_prev_hash = ev.event_hash
-
-    return VerificationStatus.VERIFIED, "Cryptographic hash chain intact and verified"
+__all__ = [
+    "EventKind",
+    "VerificationStatus",
+    "JournalEvent",
+    "canonical_event_bytes",
+    "calculate_event_hash",
+    "verify_hash_chain",
+    "sanitize_csv_cell",
+    "JournalRepository",
+    "InMemoryDemoJournal",
+    "JOURNAL_STORE",
+    "router",
+]
 
 
 # ==============================================================================
@@ -200,7 +118,7 @@ class JournalRepository:
         raise NotImplementedError
 
 
-class InMemoryDemoJournal(JournalRepository):
+class InMemoryDemoJournal(AuditJournal, JournalRepository):
     """Deterministic in-memory journal pre-seeded with representative demo events.
 
     Integrates seamlessly with the actions from Command Center and Interception Gate.
@@ -475,6 +393,20 @@ class InMemoryDemoJournal(JournalRepository):
                 },
                 "ts": "2026-10-12T10:10:00Z",
             },
+            # Event 16: Email dispatched
+            {
+                "id": "ev_016_email_sent",
+                "run_id": "run_agent_425",
+                "thread_id": "test-run-thread-live",
+                "action_id": "act_email_ops_01",
+                "checkpoint_step": 2,
+                "kind": EventKind.ACTION_COMPLETED.value,
+                "actor": "ops_assistant",
+                "status": "Allowed",
+                "description": "Executed send_email for weekly operations report",
+                "payload": {"action_name": "send_email", "status": "sent", "recipient": "team@example.com"},
+                "ts": "2026-10-12T10:15:00Z",
+            },
         ]
 
         # Build cryptographic hash chain
@@ -492,8 +424,47 @@ class InMemoryDemoJournal(JournalRepository):
             event = JournalEvent(**ev_dict)
             self._events.append(event)
 
-    def append(self, event: JournalEvent) -> JournalEvent:
-        """Appends an event to the in-memory journal, computing the chain hash."""
+    @property
+    def events(self) -> List[JournalEvent]:
+        return list(self._events)
+
+    def verify(self) -> Tuple[VerificationStatus, Optional[str]]:
+        return verify_hash_chain(self._events)
+
+    def append(  # type: ignore[override]
+        self,
+        kind: Any,
+        *,
+        run_id: str = "",
+        thread_id: str = "",
+        actor: str = "",
+        action_id: Optional[str] = None,
+        checkpoint_step: Optional[int] = None,
+        status: str = "",
+        description: str = "",
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> JournalEvent:
+        """Appends an event to the in-memory journal, computing the chain hash.
+        Supports both append(event: JournalEvent) and AuditJournal.append(kind, run_id=..., ...).
+        """
+        if isinstance(kind, JournalEvent):
+            event = kind
+        else:
+            kind_str = kind.value if isinstance(kind, EventKind) else str(kind)
+            event = JournalEvent(
+                id=f"ev_{uuid.uuid4().hex[:12]}",
+                run_id=run_id,
+                thread_id=thread_id,
+                action_id=action_id,
+                checkpoint_step=checkpoint_step,
+                kind=kind_str,
+                actor=actor,
+                status=status,
+                description=description,
+                payload=payload or {},
+                ts=datetime.now(timezone.utc).isoformat(),
+            )
+
         prev = self._events[-1].event_hash if self._events else None
         ev_dict = event.to_dict()
         ev_dict["prev_hash"] = prev
@@ -502,20 +473,42 @@ class InMemoryDemoJournal(JournalRepository):
         ev_dict["verification_status"] = VerificationStatus.UNAVAILABLE
         new_event = JournalEvent(**ev_dict)
         self._events.append(new_event)
+
+        try:
+            gj = get_journal()
+            if gj is not self and isinstance(gj, InMemoryJournal):
+                with gj._lock:
+                    if not any(e.id == new_event.id for e in gj._events):
+                        gj._events.append(new_event)
+        except Exception:
+            pass
+
         return new_event
 
-    def list_events(
+    def list_events(  # type: ignore[override]
         self,
         q: Optional[str] = None,
         kind: Optional[str] = None,
         action_id: Optional[str] = None,
         run_id: Optional[str] = None,
         actor: Optional[str] = None,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
+        date_from: Optional[Union[str, int]] = None,
+        date_to: Optional[Union[str, int]] = None,
         limit: int = 15,
         offset: int = 0,
     ) -> Tuple[List[JournalEvent], int]:
+        actual_date_from: Optional[str] = None
+        actual_date_to: Optional[str] = None
+
+        if isinstance(date_from, int):
+            limit = date_from
+            if isinstance(date_to, int):
+                offset = date_to
+        else:
+            actual_date_from = date_from
+            if isinstance(date_to, str):
+                actual_date_to = date_to
+
         filtered = list(self._events)
 
         if q:
@@ -547,12 +540,12 @@ class InMemoryDemoJournal(JournalRepository):
             act = actor.strip().lower()
             filtered = [e for e in filtered if act in e.actor.lower()]
 
-        if date_from:
-            bound_from = date_from.strip()
+        if actual_date_from:
+            bound_from = actual_date_from.strip()
             filtered = [e for e in filtered if e.ts >= bound_from]
 
-        if date_to:
-            bound_to = date_to.strip()
+        if actual_date_to:
+            bound_to = actual_date_to.strip()
             if len(bound_to) == 10:
                 # Date-only bound is inclusive of the whole day.
                 filtered = [e for e in filtered if e.ts[:10] <= bound_to]

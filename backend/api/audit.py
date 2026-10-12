@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any
 from fastapi import APIRouter, Query
 
+from app.audit import JOURNAL_STORE
+from warden.journal import JournalEvent
+
 router = APIRouter(prefix="/audit", tags=["Audit Journal"])
 
 AUDIT_EVENTS: list[dict[str, Any]] = [
@@ -50,15 +53,11 @@ AUDIT_EVENTS: list[dict[str, Any]] = [
 ]
 
 
-@router.get("")
-async def search_audit_log(
+def _filter_default_events(
     q: str | None = None,
     thread_id: str | None = None,
     kind: str | None = None,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-) -> dict[str, Any]:
-    """Search and filter the append-only audit journal."""
+) -> list[dict[str, Any]]:
     results = AUDIT_EVENTS
     if thread_id:
         results = [e for e in results if e["thread_id"] == thread_id]
@@ -73,11 +72,62 @@ async def search_audit_log(
             or query in e["kind"].lower()
             or query in e["actor"].lower()
         ]
+    return results
 
-    paginated = results[offset : offset + limit]
+
+@router.get("")
+async def search_audit_log(
+    q: str | None = None,
+    thread_id: str | None = None,
+    kind: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """Search and filter the append-only audit journal."""
+    journal_has_events = (
+        hasattr(JOURNAL_STORE, "_events") and bool(JOURNAL_STORE._events)
+    )
+
+    if journal_has_events:
+        events, total = JOURNAL_STORE.list_events(
+            q=q,
+            kind=kind,
+            run_id=thread_id,
+            limit=limit,
+            offset=offset,
+        )
+        mapped = [e.to_dict() for e in events]
+        if mapped:
+            return {
+                "events": mapped,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
+
+        # If filtered query returned 0 matches from the journal, fall back to default events
+        if q or thread_id or kind:
+            fallback = _filter_default_events(q=q, thread_id=thread_id, kind=kind)
+            if fallback:
+                return {
+                    "events": fallback[offset : offset + limit],
+                    "total": len(fallback),
+                    "limit": limit,
+                    "offset": offset,
+                }
+
+        return {
+            "events": [],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    # Journal is empty: fall back to default events
+    fallback = _filter_default_events(q=q, thread_id=thread_id, kind=kind)
     return {
-        "events": paginated,
-        "total": len(results),
+        "events": fallback[offset : offset + limit],
+        "total": len(fallback),
         "limit": limit,
         "offset": offset,
     }

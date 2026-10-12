@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from governed_demo import (  # noqa: E402
+from governed_demo import (  # type: ignore[import-not-found]  # noqa: E402
     GovernedRunner,
     LiveJournal,
     auto_approver,

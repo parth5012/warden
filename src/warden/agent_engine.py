@@ -25,6 +25,7 @@ from warden.models import (
     ActionKind,
     Allowed,
     Denied,
+    ExecutionContext,
     GateDecision,
     GateRequest,
     GateVerdict,
@@ -70,7 +71,7 @@ class AgentTurnResult:
 class BaseAgent(ABC):
     """Abstract Base Class for integrating agents with Aegis Governance."""
 
-    def __init__(self, name: str, model: str, description: str, system_prompt: str):
+    def __init__(self, name: str, model: str, description: str, system_prompt: str) -> None:
         self.name = name
         self.model = model
         self.description = description
@@ -96,7 +97,7 @@ class CodeAgent(BaseAgent):
     Specializes in filesystem operations, refactoring, and build maintenance.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="CodeAgent",
             model="Claude 3.5 Sonnet",
@@ -184,7 +185,7 @@ class DBAgent(BaseAgent):
     Specializes in schema inspections, migrations, and index maintenance.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="DBAgent",
             model="GPT-4o",
@@ -264,7 +265,7 @@ class OpsAssistant(BaseAgent):
     Specializes in ops triage, alerts, external notifications, and system metrics.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="OpsAssistant",
             model="LangGraph Ops Graph",
@@ -330,7 +331,7 @@ class PluggableAgent(BaseAgent):
         name: str = "CustomAgent",
         model: str = "Custom / External API",
         handler_fn: Optional[Callable[[str, str, List[ChatMessage]], Coroutine[Any, Any, AgentTurnResult]]] = None,
-    ):
+    ) -> None:
         super().__init__(
             name=name,
             model=model,
@@ -366,7 +367,7 @@ class PluggableAgent(BaseAgent):
 class AgentRegistry:
     """Registry maintaining active agents available in the chat console."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._agents: Dict[str, BaseAgent] = {}
         # Register standard default agents
         self.register(CodeAgent())
@@ -392,25 +393,60 @@ AGENT_REGISTRY = AgentRegistry()
 # SEAM GOVERNANCE EVALUATOR
 # ==============================================================================
 
-def evaluate_action_at_seam(action: Action, policy_id: Optional[str] = None, policy_reason: Optional[str] = None) -> Outcome:
-    """Evaluates an action through the Aegis Governance Seam.
+async def evaluate_via_executor(
+    action: Action,
+    ctx: Optional[ExecutionContext] = None,
+    approval: Optional[GateDecision] = None,
+    executor: Optional[Any] = None,
+    journal: Optional[Any] = None,
+    policy_id: Optional[str] = None,
+    policy_reason: Optional[str] = None,
+) -> Outcome:
+    """Evaluates an action through GuardedExecutor using real PolicyEngine policies.
     Returns:
     - Allowed(result) if safe
     - Denied(reason, policy) if invariant violated (Terminal Lock 5)
     - Pending(GateRequest) if escalation required (HITL Lock 2)
     """
-    if policy_id in ("SEC-HOST-00", "SEC-DB-01"):
-        return Denied(
-            reason=policy_reason or "Terminal violation: Invariant prohibited action",
-            policy=policy_id,
-        )
+    if policy_id and "policy_id" not in action.payload:
+        action.payload["policy_id"] = policy_id
+    if policy_reason and "policy_reason" not in action.payload:
+        action.payload["policy_reason"] = policy_reason
 
-    if policy_id in ("SEC-FS-04", "SEC-DB-02", "SEC-NET-01"):
-        gate = GateRequest(
-            gate_id=f"gate_{uuid.uuid4().hex[:8]}",
-            action=action,
-            context={"policy_id": policy_id, "reason": policy_reason},
-        )
-        return Pending(gate_request=gate)
+    from warden.executor import GuardedExecutor
 
-    return Allowed(result="Execution completed successfully under standard policy clearance.")
+    exec_instance = executor or GuardedExecutor(journal=journal)
+    return await exec_instance.execute(action, ctx=ctx, approval=approval)
+
+
+def evaluate_action_at_seam(
+    action: Action,
+    policy_id: Optional[str] = None,
+    policy_reason: Optional[str] = None,
+    journal: Optional[Any] = None,
+) -> Outcome:
+    """Evaluates an action through the Aegis Governance Seam.
+    Delegates to GuardedExecutor so that real policies from PolicyEngine evaluate the actions.
+    Maintains compatibility with existing returned values for Outcome (Allowed, Denied, Pending).
+    """
+    if policy_id and "policy_id" not in action.payload:
+        action.payload["policy_id"] = policy_id
+    if policy_reason and "policy_reason" not in action.payload:
+        action.payload["policy_reason"] = policy_reason
+
+    from warden.executor import GuardedExecutor
+
+    exec_instance = GuardedExecutor(journal=journal)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, exec_instance.execute(action)).result()
+    else:
+        return asyncio.run(exec_instance.execute(action))
