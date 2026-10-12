@@ -296,16 +296,22 @@ def _resolve_pg_uri(explicit: str | None) -> str:
     """
     import os
 
+    if explicit:
+        return explicit
+
+    from warden.config import settings
+
+    if settings.postgres_uri:
+        return settings.postgres_uri
+
     env = os.environ.get("WARDEN_PG_URI")
     if env:
         return env
-    if explicit:
-        return explicit
     try:
-        import pgserver
+        import pgserver  # type: ignore[import-not-found]
 
         os.makedirs(DEFAULT_PG_DIR, exist_ok=True)
-        return pgserver.get_server(DEFAULT_PG_DIR).get_uri()  # type: ignore[attr-defined]
+        return str(pgserver.get_server(DEFAULT_PG_DIR).get_uri())
     except Exception:
         print(
             f"warning: pgserver unavailable, falling back to {DEFAULT_PG_URI}",
@@ -322,6 +328,10 @@ async def _amain(pg_uri: str, thread_id: str | None) -> int:
 
 
 def main() -> None:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(description="Warden CLI chat harness")
     parser.add_argument(
         "--pg",

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Warden — AI Agent Governance{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/warden.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/static/js/warden.js"></script>
+</head>
+<body>
+  <header>
+    <div class="nav-container">
+      <a href="/" class="brand">
+        <span>🛡️ Warden</span>
+        <span class="brand-badge">Governance</span>
+      </a>
+      <nav>
+        <ul>
+          <li><a href="/" class="{% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+          <li><a href="/inbox" class="{% if active_tab == 'inbox' %}active{% endif %}">Inbox <span class="badge badge-pending" id="inbox-count">{{ pending_count|default(0) }}</span></a></li>
+          <li><a href="/runs" class="{% if active_tab == 'runs' %}active{% endif %}">Runs</a></li>
+          <li><a href="/audit" class="{% if active_tab == 'audit' %}active{% endif %}">Audit Log</a></li>
+          <li><a href="/policies" class="{% if active_tab == 'policies' %}active{% endif %}">Policies</a></li>
+          <li>
+            <span class="nav-indicator" title="Connected"></span>
+            <span style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Postgres Active</span>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

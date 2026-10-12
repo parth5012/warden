@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Explorer — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Audit Journal Explorer</h1>
+    <p class="page-desc">Append-only audit trail and telemetry events.</p>
+  </div>
+  <div>
+    <form method="GET" action="/audit" style="display: flex; gap: 0.5rem;">
+      <input type="text" name="q" placeholder="Search payloads or action names..." class="form-input" value="{{ query|default('') }}">
+      <button type="submit" class="btn btn-secondary">Search</button>
+    </form>
+  </div>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Event Kind</th>
+        <th>Actor</th>
+        <th>Thread / Action</th>
+        <th>Payload Summary</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if events %}
+        {% for evt in events %}
+        <tr>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim);">{{ evt.ts }}</td>
+          <td>
+            <span class="badge {% if evt.kind == 'action_allowed' %}badge-allowed{% elif evt.kind == 'action_denied' %}badge-denied{% elif evt.kind == 'gate_requested' %}badge-pending{% else %}badge-allowed{% endif %}">
+              {{ evt.kind }}
+            </span>
+          </td>
+          <td style="font-weight: 600;">{{ evt.actor|default("ops_assistant") }}</td>
+          <td style="font-family: var(--font-mono); font-size: 0.85rem;">{{ evt.thread_id }}</td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">
+            <code>{{ evt.payload }}</code>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="5" class="empty-state">
+            <div class="empty-state-title">No audit records found</div>
+            <p>Audit events recorded by GuardedExecutor appear here.</p>
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

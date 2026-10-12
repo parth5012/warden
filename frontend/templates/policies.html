@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Policies — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Governance Policies</h1>
+    <p class="page-desc">Enforced policy guardrails and rules (Lock 9: versioned in database).</p>
+  </div>
+  <div>
+    <button class="btn btn-primary" onclick="alert('Policy editor enables in Phase 2!')">+ New Policy</button>
+  </div>
+</div>
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Policy Name</th>
+        <th>Verdict Action</th>
+        <th>Version</th>
+        <th>Description</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if policies %}
+        {% for p in policies %}
+        <tr>
+          <td style="font-weight: 700;">{{ p.name }}</td>
+          <td>
+            <span class="badge {% if p.action == 'allow' %}badge-allowed{% elif p.action == 'deny' %}badge-denied{% else %}badge-pending{% endif %}">
+              {{ p.action|upper }}
+            </span>
+          </td>
+          <td style="font-family: var(--font-mono);">v{{ p.version|default(1) }}</td>
+          <td style="color: var(--text-muted); font-size: 0.9rem;">{{ p.description }}</td>
+          <td>
+            <span class="badge badge-allowed">Active</span>
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="5" class="empty-state">
+            <div class="empty-state-title">No policies found</div>
+            <p>Active policy rules will be listed here.</p>
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -13,3 +13,6 @@ __pycache__/
 # Temp / local
 .tmp/
 .env
+LEARNINGS.md
+LOG.md
+
