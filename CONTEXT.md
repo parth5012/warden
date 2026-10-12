@@ -33,7 +33,7 @@ Status: **design grilling in progress.** Decisions below are LOCKED — do not r
 9. **Policies live in the DB.** One store tells the whole accountability story (actions, approvals, rule changes). Guardrail: append-only `policy_versions` table (`policy_id, version, content, who, when`) — lock 5's "edits are logged" promise. Repo ships seed policies loaded on first boot; after that, DB owns the truth. pgvector index lives beside the rows — atomic, no file-sync pipeline.
 10. **Demo = phased, single agent first.** Phase 1: one "ops assistant" agent with email + DB + shell tools, proving all 4 PS bullets on one graph (gate on send, deny on DROP TABLE, sandbox on rm -rf, cost/latency telemetry). Then expand slowly (see ROADMAP.md): policy editor UI → multi-agent cost comparison → polish. Don't build multi-agent before the core story works.
 11. **Name = Warden.** One word, enforcement + oversight, not 400 repos deep.
-12. **UI = server-rendered in the FastAPI app.** Jinja + HTMX, one process, no build step. Endpoints stay JSON-clean so a React frontend can lift later if ever needed.
+12. **UI = server-rendered in the FastAPI app.** Plain HTML renderers + HTMX partials, one process, no build step (the current console does not use Jinja). Endpoints stay JSON-clean so a React frontend can lift later if ever needed.
 
 ### Derived implications (follow from locks, not separately decided)
 
@@ -46,7 +46,7 @@ Status: **design grilling in progress.** Decisions below are LOCKED — do not r
 - What `execute()` does for an LLM action: DONE (derived from locks 1+7 — injected LLM client adapter)
 - Policy storage: DONE (lock 9)
 - Demo scenario: DONE (lock 10, phases in ROADMAP.md)
-- FastAPI surface + approvals UI shape: DONE (lock 12 — server-rendered Jinja+HTMX, JSON-clean endpoints)
+- FastAPI surface + approvals UI shape: DONE (lock 12 — server-rendered HTML console + HTMX partials, JSON-clean endpoints)
 - Product name: DONE (lock 11 — Warden)
 
 ## Related docs

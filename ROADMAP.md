@@ -23,6 +23,8 @@ Exit criteria: judge can watch all four beats live; `pytest` green; journal surv
 
 Exit criteria: live rule-change demo, `policy_versions` shows who/when/what.
 
+Lock 12 note: the Phase 1 console was delivered as plain HTML renderers + HTMX partials (no Jinja), so the ARCHITECTURE.md layout now points at `app/dashboard.py` instead of `app/views/`.
+
 ## Phase 3 — Expand the cast (multi-agent)
 - Second agent (researcher or writer) sharing the same executor
 - Cross-agent cost/latency leaderboard (projection, no new tables)
@@ -34,7 +36,9 @@ Exit criteria: live rule-change demo, `policy_versions` shows who/when/what.
 - Run replay: pick a run, walk it event by event
 
 ## Explicitly out of scope (for now)
+
 - Login/roles (lock 8: named keys only)
   - Subprocess sandbox adapter (dropped in favor of Docker network isolation, DECISIONS.md entry 1)
 - Policy override by humans (lock 5: DENY is terminal)
 - Anything in `CONTEXT.md` open-questions list that isn't picked up by a phase
+- Jinja templates: the console currently uses plain HTML renderers + HTMX partials, not Jinja

@@ -74,9 +74,9 @@ warden/
     llm.py              # LLM client adapter (usage -> journal)
     projections/        # telemetry.py, inbox.py, decision_graph.py — pure funcs
   app/
-    main.py             # FastAPI app
-    api/                # JSON endpoints (below)
-    views/              # Jinja templates + HTMX (lock 12)
+    main.py             # FastAPI app (JSON endpoints below, plus the server-rendered console)
+    dashboard.py        # operator console renderers (plain HTML + HTMX partials, no Jinja — lock 12)
+  tests/
   agents/
     ops_assistant.py    # phase 1 graph
   policies/seed/        # seed rules, loaded on first boot (lock 9)
@@ -105,7 +105,11 @@ GET  /inbox                     pending gate requests (HTMX partial)
 POST /gates/{gate_id}/decision  {verdict: approve|deny, reason} + Warden-Key header
 GET  /audit?q=&run=&kind=       searchable audit log
 GET  /runs/{thread_id}/graph    decision-graph projection (joined to checkpoints)
-GET  /dashboard                 telemetry: cost, latency, tool usage
+GET  /dashboard                 operator console: live journal feed (SSE) + approvals inbox + lease toggle + run launcher
+GET  /toggles/lease             current lease-enforcement policy
+POST /toggles/lease             flip enforcement / set TTL for the next route
+GET  /runs/{thread_id}/lease    per-run lease card (JSON or HTMX partial)
+POST /run-web                   plain-form run launcher for the console (no-JS path)
 # phase 2:
 GET/POST /policies              list/create; POST /policies/{id} appends a version
 ```

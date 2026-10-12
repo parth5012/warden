@@ -1,0 +1,93 @@
+[
+  {
+    "id": "p-deny-destructive-sql",
+    "category": "destructive_sql",
+    "verdict": "deny",
+    "text": "destructive SQL operations such as dropping tables, deleting rows, or truncating data are forbidden without explicit owner approval, because they remove data irreversibly",
+    "note": "Canonical terminal-deny rule for destructive SQL. Broad phrasing on purpose so several destructive payloads can match it."
+  },
+  {
+    "id": "p-deny-rm-recursive",
+    "category": "destructive_sql",
+    "verdict": "deny",
+    "text": "recursive filesystem deletion like rm -rf is forbidden because it removes data and backups without a recoverable record",
+    "note": "Terminal deny for rm -rf style destructive shell actions. keeps this as its own row so a shell payload that mentions rm -rf can match this rather than the SQL rule."
+  },
+  {
+    "id": "p-escalate-email",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "sending email to external recipients is escalated to a human gate because outbound mail can reach real people and is hard to undo",
+    "note": "Canonical risky-tool escalate for send_email. broad 'external recipients' phrasing."
+  },
+  {
+    "id": "p-escalate-shell",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "running shell commands is escalated because a shell can do anything the runtime can, including destructive operations, so a human should confirm intent",
+    "note": "Canonical escalate for run_shell. broad phrasing so shell actions that are not obviously destructive still escalate via this row."
+  },
+  {
+    "id": "p-escalate-db-write",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "database write operations like inserts and updates are escalated when they touch production data, because a bad write can corrupt records",
+    "note": "Escalate for db_write that is NOT destructive. deliberately distinct from the destructive-sql deny so the dataset can test db_write vs DROP TABLE separation."
+  },
+  {
+    "id": "p-escalate-payment",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "making a payment is escalated because it moves real money and should not be automated without a human confirming the amount and recipient",
+    "note": "Canonical escalate for make_payment."
+  },
+  {
+    "id": "p-escalate-upload",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "uploading files to external systems is escalated because an upload can exfiltrate data or publish something unintended",
+    "note": "Canonical escalate for upload_file."
+  },
+  {
+    "id": "p-allow-read-only",
+    "category": "read_only",
+    "verdict": "allow",
+    "text": "list_orders read_table get_customer allowed read_only lookup query records table",
+    "note": "Canonical allow rule for benign reads. reworded to be retrievable by HashEmbeddings: lead token list_orders matches the benign read actions the golden set asserts."
+  },
+  {
+    "id": "p-deny-pii-export",
+    "category": "data_export",
+    "verdict": "deny",
+    "text": "db_export export customer PII personal data forbidden exfiltrate bulk",
+    "note": "Domain-specific deny for data export. reworded to be retrievable by HashEmbeddings: short, keyword-dense, lead token db_export matches the PII-export action."
+  },
+  {
+    "id": "p-allow-internal-report-export",
+    "category": "data_export",
+    "verdict": "allow",
+    "text": "db_export export weekly report aggregated analytics allowed operations internal",
+    "note": "Lookalike to p-deny-pii-export but with the opposite verdict. reworded to be retrievable by HashEmbeddings so the 'weekly report export' action picks the right row."
+  },
+  {
+    "id": "p-escalate-external-api-call",
+    "category": "risky_tool",
+    "verdict": "escalate",
+    "text": "call_external_api external api third party mutation escalated human approve destination",
+    "note": "A second escalate row in the risky_tool space, reworded to be retrievable by HashEmbeddings: lead token call_external_api matches the external-api-mutate action."
+  },
+  {
+    "id": "p-allow-search-lookup",
+    "category": "read_only",
+    "verdict": "allow",
+    "text": "search_kb search knowledge base lookup query allowed read onboarding",
+    "note": "Second allow row for reads, reworded to be retrievable by HashEmbeddings: lead token search_kb matches the search/lookup action."
+  },
+  {
+    "id": "p-invalid-verdict-maybe",
+    "category": "invalid",
+    "verdict": "maybe",
+    "text": "list_orders from the orders table allowed if requester on shift",
+    "note": "INTENTIONAL INVALID VERDICT. reworded to be the nearest neighbor to the contrived garbage-nearest-neighbor action row (which leads with list_orders), so the test is about verdict validation: the engine must reject 'maybe' and still escalate and stay unmatched."
+  }
+]

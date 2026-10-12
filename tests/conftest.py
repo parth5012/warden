@@ -10,11 +10,10 @@ from collections.abc import Iterator
 
 import pytest
 
+# psycopg async mode is incompatible with Windows' default ProactorEventLoop;
+# the selector loop is required for AsyncPostgresSaver tests on Windows.
 if sys.platform == "win32":
-    try:
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    except Exception:
-        pass
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from warden.config import settings
 
