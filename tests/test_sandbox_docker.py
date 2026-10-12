@@ -458,11 +458,11 @@ async def test_timeout_handling_kills_and_removes_container(
         recorded_runs.append((argv, timeout_s))
         raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout_s)
 
-    def fake_cleanup(container_name: str) -> None:
+    def fake_reconcile(container_name: str) -> None:
         cleaned.append(container_name)
 
     monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
-    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_reconcile", fake_reconcile)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -656,8 +656,11 @@ async def test_cancellation_cleans_up_container_and_reraises(
     def fake_cleanup(container_name: str) -> None:
         cleaned.append(container_name)
 
+    def fake_reconcile(container_name: str) -> None:
+        fake_cleanup(container_name)
+
     monkeypatch.setattr("warden.sandbox.docker._blocking_run", fake_run)
-    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._blocking_reconcile", fake_reconcile)
 
     sandbox = DockerSandbox(
         workspace_path=workspace_path,
@@ -681,3 +684,46 @@ async def test_cancellation_cleans_up_container_and_reraises(
         await task
 
     assert cleaned == ["warden-act-cancel"]
+
+
+def test_reconcile_retries_until_container_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_blocking_reconcile re-removes while docker inspect still sees the name."""
+    from warden.sandbox.docker import _blocking_reconcile
+
+    cleaned: list[str] = []
+    seen: list[bool] = [True, True, False]
+
+    def fake_cleanup(container_name: str) -> None:
+        cleaned.append(container_name)
+
+    def fake_exists(container_name: str) -> bool:
+        assert container_name == "warden-late-container"
+        return seen.pop(0)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._container_exists", fake_exists)
+
+    _blocking_reconcile("warden-late-container", attempts=5, delay_s=0.0)
+
+    assert cleaned == ["warden-late-container"] * 3
+
+
+def test_reconcile_gives_up_after_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_blocking_reconcile stops after `attempts` even if the name persists."""
+    from warden.sandbox.docker import _blocking_reconcile
+
+    cleaned: list[str] = []
+
+    def fake_cleanup(container_name: str) -> None:
+        cleaned.append(container_name)
+
+    monkeypatch.setattr("warden.sandbox.docker._blocking_cleanup", fake_cleanup)
+    monkeypatch.setattr("warden.sandbox.docker._container_exists", lambda name: True)
+
+    _blocking_reconcile("warden-stuck", attempts=3, delay_s=0.0)
+
+    assert cleaned == ["warden-stuck"] * 3

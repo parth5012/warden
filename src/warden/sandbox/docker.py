@@ -59,6 +59,34 @@ def _blocking_cleanup(container_name: str) -> None:
             pass
 
 
+def _container_exists(container_name: str) -> bool:
+    """Check whether a container name currently exists (running or stopped)."""
+    try:
+        probe = subprocess.run(
+            ["docker", "inspect", container_name],
+            capture_output=True,
+            timeout=5.0,
+        )
+    except Exception:
+        return False
+    return probe.returncode == 0
+
+
+def _blocking_reconcile(container_name: str, attempts: int = 5, delay_s: float = 0.2) -> None:
+    """Best-effort cleanup plus verification that the container is gone.
+
+    Closes the cancellation race where cleanup runs before the daemon creates
+    the container: the worker thread survives ``to_thread`` cancellation and
+    may send the create request afterwards. Re-check with ``docker inspect``
+    and re-remove until the name is gone (or attempts run out).
+    """
+    for _ in range(attempts):
+        _blocking_cleanup(container_name)
+        if not _container_exists(container_name):
+            return
+        time.sleep(delay_s)
+
+
 def _sanitize_container_name(action_id: str) -> str:
     """Sanitize action ID for use in Docker container name."""
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "-", action_id)
@@ -190,8 +218,9 @@ class DockerSandbox:
         except subprocess.TimeoutExpired:
             # subprocess.run already killed the docker client; the container
             # itself must still be killed server-side (client death does not
-            # stop it, and --rm only fires once it stops).
-            await asyncio.to_thread(_blocking_cleanup, container_name)
+            # stop it, and --rm only fires once it stops). Reconcile covers
+            # a slow daemon that reports the name only after cleanup.
+            await asyncio.to_thread(_blocking_reconcile, container_name)
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return SandboxResult(
                 ok=False,
@@ -203,7 +232,9 @@ class DockerSandbox:
                 profile=profile_tag,
             )
         except asyncio.CancelledError:
-            await asyncio.to_thread(_blocking_cleanup, container_name)
+            # The worker thread survives cancellation and may create the
+            # container after cleanup runs — reconcile until the name is gone.
+            await asyncio.to_thread(_blocking_reconcile, container_name)
             raise
         except Exception as err:
             raise SandboxUnavailable(
