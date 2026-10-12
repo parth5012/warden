@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 import re
+import subprocess
 import time
 from typing import Any, Callable
 
@@ -37,39 +38,25 @@ DOCKER_UNAVAILABLE_PATTERNS = (
 )
 
 
-async def _cleanup_container(container_name: str, proc: asyncio.subprocess.Process) -> None:
-    """Best-effort kill and remove container, terminating the host docker process."""
-    try:
-        kill_proc = await asyncio.create_subprocess_exec(
-            "docker", "kill", container_name
-        )
+def _blocking_run(argv: list[str], timeout_s: float) -> subprocess.CompletedProcess[bytes]:
+    """Run a host process synchronously, capturing output.
+
+    Executed inside ``asyncio.to_thread`` so sandboxed execution never depends
+    on the running event loop's subprocess support. On Windows the process
+    runs under ``WindowsSelectorEventLoopPolicy`` (forced by ``warden.config``
+    for psycopg compatibility), where ``asyncio.create_subprocess_exec`` raises
+    ``NotImplementedError`` — this helper is immune to that.
+    """
+    return subprocess.run(argv, capture_output=True, timeout=timeout_s)
+
+
+def _blocking_cleanup(container_name: str) -> None:
+    """Best-effort kill and remove a container via synchronous host calls."""
+    for args in (["docker", "kill", container_name], ["docker", "rm", "-f", container_name]):
         try:
-            await asyncio.wait_for(kill_proc.wait(), timeout=5.0)
-        except (TimeoutError, asyncio.TimeoutError):
-            kill_proc.kill()
-    except Exception:
-        pass
-
-    try:
-        rm_proc = await asyncio.create_subprocess_exec(
-            "docker", "rm", "-f", container_name
-        )
-        try:
-            await asyncio.wait_for(rm_proc.wait(), timeout=5.0)
-        except (TimeoutError, asyncio.TimeoutError):
-            rm_proc.kill()
-    except Exception:
-        pass
-
-    try:
-        proc.kill()
-    except (ProcessLookupError, Exception):
-        pass
-
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=2.0)
-    except Exception:
-        pass
+            subprocess.run(args, capture_output=True, timeout=5.0)
+        except Exception:
+            pass
 
 
 def _sanitize_container_name(action_id: str) -> str:
@@ -129,9 +116,13 @@ class DockerSandbox:
         self,
         workspace_path: Path,
         registry_getter: Callable[[str], ToolProfile | None] = get_profile,
+        image_override: str | None = None,
     ) -> None:
         self._workspace_path = workspace_path
         self._registry_getter = registry_getter
+        # Non-empty override (e.g. Settings.sandbox_image) replaces the
+        # registry-pinned image for every profile. Empty/None keeps pinning.
+        self._image_override = image_override or None
 
     def _build_argv(
         self,
@@ -140,6 +131,7 @@ class DockerSandbox:
         container_name: str,
     ) -> list[str]:
         """Construct the docker run CLI argument vector."""
+        image = self._image_override or profile.image
         cmd = [
             "docker",
             "run",
@@ -159,7 +151,7 @@ class DockerSandbox:
         if profile.mount in ("ro", "rw"):
             cmd.extend(["-v", f"{self._workspace_path}:/workspace:{profile.mount}"])
 
-        cmd.append(profile.image)
+        cmd.append(image)
 
         if profile.mode == "exec":
             cmd.extend(action.payload["argv"])
@@ -186,27 +178,20 @@ class DockerSandbox:
         start_time = time.monotonic()
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            # to_thread: immune to Windows SelectorEventLoopPolicy, which
+            # cannot spawn subprocesses via asyncio (see _blocking_run).
+            completed = await asyncio.to_thread(
+                _blocking_run, argv, float(profile.timeout_s)
             )
         except FileNotFoundError as err:
             raise SandboxUnavailable(
-                f"Docker CLI binary not found on PATH: {err}"
+                f"Docker CLI binary not found on PATH: {err!r}"
             ) from err
-        except Exception as err:
-            raise SandboxUnavailable(
-                f"Failed to spawn Docker process: {err}"
-            ) from err
-
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=float(profile.timeout_s),
-            )
-        except (TimeoutError, asyncio.TimeoutError):
-            await _cleanup_container(container_name, proc)
+        except subprocess.TimeoutExpired:
+            # subprocess.run already killed the docker client; the container
+            # itself must still be killed server-side (client death does not
+            # stop it, and --rm only fires once it stops).
+            await asyncio.to_thread(_blocking_cleanup, container_name)
             duration_ms = int((time.monotonic() - start_time) * 1000)
             return SandboxResult(
                 ok=False,
@@ -218,21 +203,26 @@ class DockerSandbox:
                 profile=profile_tag,
             )
         except asyncio.CancelledError:
-            await _cleanup_container(container_name, proc)
+            await asyncio.to_thread(_blocking_cleanup, container_name)
             raise
+        except Exception as err:
+            raise SandboxUnavailable(
+                f"Failed to run Docker container: {err!r}"
+            ) from err
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
-        stdout_text = _truncate_output(stdout_bytes)
-        stderr_text = _truncate_output(stderr_bytes)
+        stdout_text = _truncate_output(completed.stdout)
+        stderr_text = _truncate_output(completed.stderr)
+        returncode = completed.returncode
 
-        if proc.returncode != 0 and _is_infrastructure_failure(stderr_text):
+        if returncode != 0 and _is_infrastructure_failure(stderr_text):
             raise SandboxUnavailable(
-                f"Docker sandbox unavailable (exit {proc.returncode}): {stderr_text.strip()}"
+                f"Docker sandbox unavailable (exit {returncode}): {stderr_text.strip()}"
             )
 
         return SandboxResult(
-            ok=(proc.returncode == 0),
-            exit_code=proc.returncode,
+            ok=(returncode == 0),
+            exit_code=returncode,
             stdout=stdout_text,
             stderr=stderr_text,
             timed_out=False,
