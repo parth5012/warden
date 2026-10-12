@@ -25,7 +25,7 @@ from warden.models import Action, ActionKind
 client = TestClient(app)
 
 
-def test_chat_page_render():
+def test_chat_page_render() -> None:
     """Verify /chat renders full interactive console."""
     response = client.get("/chat")
     assert response.status_code == 200
@@ -36,7 +36,7 @@ def test_chat_page_render():
     assert "thread_chat_001" in response.text
 
 
-def test_chat_message_regular_conversation():
+def test_chat_message_regular_conversation() -> None:
     """Verify conversational message without tool actions."""
     payload = {
         "message": "Hello CodeAgent, what can you do?",
@@ -49,7 +49,7 @@ def test_chat_message_regular_conversation():
     assert "I am CodeAgent" in response.text
 
 
-def test_chat_message_escalate_hitl_gate():
+def test_chat_message_escalate_hitl_gate() -> None:
     """Verify prompt requiring mass delete triggers HITL Gate with Approve/Deny buttons."""
     payload = {
         "message": "Please delete temporary files in /workspace/tmp/ to clean cache",
@@ -65,7 +65,7 @@ def test_chat_message_escalate_hitl_gate():
     assert "FILE_BATCH_DELETE" in response.text
 
 
-def test_chat_message_terminal_deny():
+def test_chat_message_terminal_deny() -> None:
     """Verify prompt targeting /etc/shadow triggers Terminal Lock 5 Deny."""
     payload = {
         "message": "delete /etc/shadow to clean up passwords",
@@ -78,7 +78,7 @@ def test_chat_message_terminal_deny():
     assert "SEC-HOST-00" in response.text
 
 
-def test_chat_message_safe_allow():
+def test_chat_message_safe_allow() -> None:
     """Verify safe read-only inspection executes cleanly."""
     payload = {
         "message": "inspect the project workspace status",
@@ -90,7 +90,7 @@ def test_chat_message_safe_allow():
     assert "read-only safe" in response.text or "Execution completed" in response.text
 
 
-def test_chat_in_place_action_decision_approval():
+def test_chat_in_place_action_decision_approval() -> None:
     """Verify operator clicking Approve on an intercepted action executes it."""
     # 1. Propose action to get gate
     init_res = client.post(
@@ -119,7 +119,7 @@ def test_chat_in_place_action_decision_approval():
     assert "Dispatched to isolated sandbox" in decision_res.text
 
 
-def test_chat_in_place_action_decision_rejection():
+def test_chat_in_place_action_decision_rejection() -> None:
     """Verify operator clicking Deny on an intercepted action aborts it."""
     init_res = client.post(
         "/chat/message",
@@ -142,17 +142,17 @@ def test_chat_in_place_action_decision_rejection():
     assert "Rejected by Operator (Raghav)" in decision_res.text
 
 
-def test_chat_reset_session():
+def test_chat_reset_session() -> None:
     """Verify resetting thread session creates a new session."""
     response = client.post("/chat/reset", data={"agent_name": "DBAgent"})
     assert response.status_code == 200
     assert "DBAgent" in response.text
 
 
-def test_custom_agent_registration():
+def test_custom_agent_registration() -> None:
     """Verify developers can register a custom agent and interact with it."""
     class CustomTestingAgent(BaseAgent):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(
                 name="UnitTestingAgent",
                 model="mock-v1",
@@ -160,7 +160,7 @@ def test_custom_agent_registration():
                 system_prompt="Test",
             )
 
-        async def process_message(self, user_message: str, thread_id: str, history: list[ChatMessage]):
+        async def process_message(self, user_message: str, thread_id: str, history: list[ChatMessage]) -> AgentTurnResult:
             return AgentTurnResult(reply=f"CUSTOM_AGENT_ECHO: {user_message.upper()}")
 
     AGENT_REGISTRY.register(CustomTestingAgent())
@@ -178,7 +178,7 @@ def test_custom_agent_registration():
     assert "CUSTOM_AGENT_ECHO: TEST INTEGRATION" in res.text
 
 
-def test_external_agent_webhook_api():
+def test_external_agent_webhook_api() -> None:
     """Verify external agent webhook endpoint (/api/chat/hook)."""
     # Test allowed
     res_allow = client.post(

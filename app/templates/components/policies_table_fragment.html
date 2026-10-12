@@ -77,8 +77,8 @@
                         {% include "components/policy_status_badge.html" %}
                     </td>
                     <td style="text-align: right;">
-                        <span class="trigger-count font-mono" title="Evaluations matched in this deployment">
-                            {{ policy.triggered_count }}
+                        <span class="trigger-count font-mono" title="Evaluations matched in this deployment (catalog baseline + live seam checks)">
+                            {{ policy.triggered_count + live_counts.get(policy.id, 0) }}
                         </span>
                     </td>
                 </tr>

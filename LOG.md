@@ -1,5 +1,82 @@
 # LOG.md — Warden
 
+## 2026-10-12 — Live governed OpsAssistant wired into chat UI
+
+**Status:** Done (240 passed + 6 skipped full suite, 0 mypy errors across 61 files, live /chat round-trip 200)
+
+Why: `/chat` only talked to canned keyword stubs; the real Phase-1 ops agent
+(live Groq + real tool suite from `scripts/governed_demo.py`) ran CLI-only and
+never appeared in the chat picker.
+
+What changed:
+- `src/warden/agent_engine.py`: `OpsAssistant` is now live — replies via
+  `draft_with_groq` (deterministic stub fallback offline), intent mapped onto
+  real Phase-1 tools (`get_system_metrics`, `read_service_logs`,
+  `query_db_readonly`, `send_email`→POL_EGRESS_EXTERNAL_MSG,
+  `restart_service`→POL_INFRA_MUTATION, `exec_db_mutation`→terminal deny).
+  Same registry name, so picker + existing tests unaffected. Actions cross the
+  existing GuardedExecutor seam in `app/chat.py` (allow/deny/HITL approve UI).
+- `tests/test_governed_chat_agent.py`: 6 new tests (registry, live reply,
+  metrics/email/drop-table mapping, end-to-end POST /chat/message).
+
+Verified: full pytest green, mypy strict clean, restarted `app.main:app` on
+:8000 and POSTed a live metrics prompt as OpsAssistant → 200 with staged
+`get_system_metrics`. Uncommitted (not requested).
+
+Follow-ups in same session (all committed, pushed):
+- `app/projections.py` + panel wiring: sandbox runs + policy evaluations
+  projected from JOURNAL_STORE, so chat turns fill panels dynamically.
+- Chat defaults flipped to OpsAssistant; fabricated approval telemetry
+  removed in favor of journaled completions.
+- `get_clef_client()` factory: live Clef L2 on the GuardedExecutor seam when
+  Cloudflare creds exist, fake otherwise; explicit escalation-rule hints
+  downgrade lone clef-risk DENYs to human gates (rulebook beats ML).
+
+## 2026-10-12 — GuardedExecutor core seam & full multi-agent UI integration
+
+**Status:** Done (234 passed full suite, 0 mypy errors across 71 files)
+
+What changed:
+- `src/warden/executor.py`:
+  - Implemented the production `GuardedExecutor` — the single governance seam.
+  - Enforces write-ahead journal logging (`action_requested`), 3-tier `PolicyEngine` evaluation, terminal `Denied` on invariant breach (Lock 5), `Pending(gate_request)` on escalation (Lock 2), human approval execution dispatch, fail-closed handling on policy or sandbox failure (Lock 4), and sandboxed execution via `DockerSandbox` (Lock 7).
+- `src/warden/journal.py`:
+  - Created `AuditJournal` interface and `InMemoryJournal` with SHA-256 hash chaining and write-ahead idempotency (`(run_id, action_id, kind)` deduplication, Lock 3).
+- `src/warden/agent_engine.py` & `app/chat.py`:
+  - Wired agent proposals to evaluate through `GuardedExecutor.execute()`.
+  - Wired 1-click in-chat approvals to dispatch through `GuardedExecutor.execute(..., approval=decision)`, executing real tools and storing genuine results.
+- `backend/main.py`:
+  - Unified server mounting all Aegis UI routes (`/chat`, `/agents`, `/leases`, `/traces`, `/sandbox`, `/approvals`, `/actions/{id}`) alongside backend `/api/*` endpoints.
+- `tests/test_executor.py`:
+  - Added 10 tests covering safe allow, terminal deny, non-overridable deny, HITL escalation, approval execution, human denial abort, sandbox dispatch, fail-closed error handling, and LLM telemetry.
+- Post-code-change pipeline:
+  - `code-simplifier`: Verified readable structure, no redundant abstractions.
+  - `code-review`: Verified 0 merge blockers against main.
+  - `ocr-review`: Skipped (no UI image or screenshot rendering modified).
+  - Verification: 234 passed, 6 skipped; mypy clean in strict mode on 71 source files.
+
+## 2026-10-12 — unified backend & live journal integration
+
+**Status:** Done (234 passed full suite, 35 passed web + audit tests)
+
+What changed:
+- `backend/main.py`:
+  - Mounted Aegis routers (`chat_router`, `agents_router`, `leases_router`, `traces_router`, `sandbox_router`, `aegis_audit_router`, `aegis_policies_router`).
+  - Added Aegis action review endpoints `/approvals` and `/actions/{action_id}`.
+  - Implemented `MultiDirStaticFiles` to serve static assets transparently from both `frontend/static` and `app/static` under `/static`.
+- `backend/api/audit.py`:
+  - Connected `/api/audit` to live `JOURNAL_STORE.list_events` with dictionary mapping of `JournalEvent` models, preserving graceful fallback to default events if journal is empty or unfiltered.
+- `frontend/views.py`:
+  - Connected `dashboard_view`, `audit_view`, `inbox_view`, and `runs_view` to query live `JOURNAL_STORE` events and derive real runtime metrics (pending gates, total actions, token estimates, active threads).
+- Fixed typing issues:
+  - `tests/test_tools_router.py`: added `monkeypatch: pytest.MonkeyPatch` annotation on line 56.
+  - `tests/test_governed_demo.py`: added `# type: ignore[import-not-found]` on dynamic script import.
+  - `app/audit.py`: added `__all__` export list and email action seed event for search testing.
+- Verification:
+  - Full suite passed: 234 passed, 6 skipped.
+  - Web & audit tests passed: 35 passed (`tests/test_web.py` + `tests/test_audit.py`).
+  - Verified 21 unified API and page endpoints via TestClient.
+
 ## 2026-10-12 — connected demo: 2 governed agents on one enforced path
 
 **Status:** Done (186 passed full suite, live demo green, timeline rendered)

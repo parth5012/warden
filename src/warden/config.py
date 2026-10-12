@@ -1,10 +1,11 @@
-"""Aegis configuration and environment settings."""
+"""Warden configuration and environment settings."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING, Any
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,9 +21,13 @@ def ensure_windows_event_loop() -> None:
 
 ensure_windows_event_loop()
 
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
+
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_ROOT = _CURRENT_DIR.parent.parent
 _ENV_FILES = (
+    str(_WORKSPACE_ROOT / "backend" / ".env"),
     str(_WORKSPACE_ROOT / ".env"),
     str(_CURRENT_DIR / ".env"),
     ".env",
@@ -124,3 +129,39 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_groq_llm(model: str | None = None) -> ChatOpenAI | None:
+    """Return configured Groq ChatOpenAI client if groq_api_key is available."""
+    if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value():
+        return None
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=model or settings.groq_model,
+        api_key=settings.groq_api_key,
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.0,
+        timeout=10.0,
+    )
+
+
+def get_clef_client() -> Any:
+    """Return a live ClefClient when Cloudflare creds are configured.
+
+    Falls back to the hermetic FakeClefClient otherwise, so unit tests and
+    offline environments never touch the network. `Any` keeps mypy strict
+    happy across the Clef/Fake adapter shapes (both expose `judge()`).
+    """
+    from warden.policy.layer_clef import ClefClient, FakeClefClient
+
+    account_id = settings.clef_account_id.strip()
+    token = settings.clef_api_token.get_secret_value().strip() if settings.clef_api_token else ""
+    if account_id and token:
+        return ClefClient(
+            account_id=account_id,
+            api_token=token,
+            model=settings.clef_model,
+            timeout_s=settings.clef_timeout_s,
+        )
+    return FakeClefClient()

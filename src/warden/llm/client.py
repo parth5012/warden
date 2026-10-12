@@ -46,7 +46,7 @@ from warden.models import Action, ActionKind
 
 # Regex pattern to redact sensitive credentials from error messages and logs
 SECRET_PATTERN = re.compile(
-    r"(?:bearer\s+[a-zA-Z0-9_\-\.]{15,}|sk-[a-zA-Z0-9_\-]{20,}|key=[a-zA-Z0-9_\-]{15,})",
+    r"(?:bearer\s+[a-zA-Z0-9_\-\.]{15,}|sk-[a-zA-Z0-9_\-]{20,}|gsk_[a-zA-Z0-9_\-]{20,}|key=[a-zA-Z0-9_\-]{15,})",
     re.IGNORECASE,
 )
 
@@ -77,6 +77,7 @@ class LLMExecutionResult:
     error_code: str | None = None
     error_detail: str | None = None
     correlation_id: str | None = None
+    actor: str | None = None
 
     @property
     def is_success(self) -> bool:
@@ -258,6 +259,7 @@ class GuardedLLMClient:
         run_id = action.run_id
         action_id = action.id
         thread_id = action.thread_id
+        actor = str(action.payload.get("agent") or action.payload.get("actor") or "api")
         model = str(action.payload.get("model") or action.name or "gpt-4o")
         provider = str(action.payload.get("provider", "openai"))
         messages = action.payload.get("messages", [])
@@ -275,6 +277,7 @@ class GuardedLLMClient:
         )
 
         reserved_cost = Decimal("0")
+        est_cost_record: CostRecord | None = None
         estimated_tokens: int | None = None
         retry_count = 0
 
@@ -402,6 +405,7 @@ class GuardedLLMClient:
                 provider=provider,
                 provider_request_id=request_id,
                 correlation_id=self._get_correlation_id(action),
+                actor=actor,
             )
 
             await self._emit_telemetry(exec_result)
@@ -440,14 +444,15 @@ class GuardedLLMClient:
                 outcome_kind="error",
                 result=None,
                 usage=fallback_usage,
-                cost=None,
                 latency_ms=latency_ms,
                 retry_count=retry_count,
                 model=model,
                 provider=provider,
+                cost=est_cost_record,
                 error_code=error_code,
                 error_detail=clean_error,
                 correlation_id=self._get_correlation_id(action),
+                actor=actor,
             )
 
             await self._emit_telemetry(exec_result)
@@ -506,6 +511,7 @@ class GuardedLLMClient:
             error_code=res.error_code,
             error_detail=res.error_detail,
             correlation_id=res.correlation_id,
+            actor=res.actor,
         )
 
         try:

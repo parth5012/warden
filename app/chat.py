@@ -1,13 +1,12 @@
 """Interactive Agent Chat & Interception Console for Aegis.
 
-Allows operators to converse directly with AI agents (CodeAgent, DBAgent, OpsAssistant,
-or custom integrated agents), observe real-time policy evaluation, and review
+Allows operators to converse directly with AI agents (OpsAssistant,
+CodeAgent, DBAgent, or custom integrated agents), observe real-time policy evaluation, and review
 intercepted tool actions with 1-click approvals right in the chat stream.
 """
 
 from __future__ import annotations
 
-import json
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -24,15 +23,27 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.audit import EventKind, JOURNAL_STORE, JournalEvent
-from app.sandbox import SANDBOX_RUNS_STORE
 from warden.agent_engine import (
     AGENT_REGISTRY,
     AgentTurnResult,
     BaseAgent,
     ChatMessage,
     evaluate_action_at_seam,
+    evaluate_via_executor,
 )
-from warden.models import Action, ActionKind, Allowed, Denied, OutcomeKind, Pending
+from warden.executor import GuardedExecutor
+from warden.journal import get_journal
+from warden.models import (
+    Action,
+    ActionKind,
+    Allowed,
+    Denied,
+    ExecutionContext,
+    GateDecision,
+    GateVerdict,
+    OutcomeKind,
+    Pending,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -50,10 +61,10 @@ DEFAULT_THREAD_ID = "thread_chat_001"
 CHAT_SESSIONS: Dict[str, List[ChatMessage]] = {}
 
 
-def _get_or_create_session(thread_id: str, agent_name: str = "CodeAgent") -> List[ChatMessage]:
+def _get_or_create_session(thread_id: str, agent_name: str = "OpsAssistant") -> List[ChatMessage]:
     """Retrieve existing session messages or initialize with tactical greeting."""
     if thread_id not in CHAT_SESSIONS:
-        agent = AGENT_REGISTRY.get(agent_name) or AGENT_REGISTRY.get("CodeAgent")
+        agent = AGENT_REGISTRY.get(agent_name) or AGENT_REGISTRY.get("OpsAssistant")
         welcome_msg = ChatMessage(
             id=f"msg_{uuid.uuid4().hex[:8]}",
             role="agent",
@@ -71,7 +82,7 @@ def _get_or_create_session(thread_id: str, agent_name: str = "CodeAgent") -> Lis
 
 
 # Seed default session
-_get_or_create_session(DEFAULT_THREAD_ID, "CodeAgent")
+_get_or_create_session(DEFAULT_THREAD_ID, "OpsAssistant")
 
 
 # ==============================================================================
@@ -82,11 +93,11 @@ _get_or_create_session(DEFAULT_THREAD_ID, "CodeAgent")
 async def get_chat_page(
     request: Request,
     thread_id: Optional[str] = Query(DEFAULT_THREAD_ID),
-    agent: Optional[str] = Query("CodeAgent"),
+    agent: Optional[str] = Query("OpsAssistant"),
 ):
     """Render the full interactive Agent Chat console."""
     tid = thread_id or DEFAULT_THREAD_ID
-    messages = _get_or_create_session(tid, agent or "CodeAgent")
+    messages = _get_or_create_session(tid, agent or "OpsAssistant")
     available_agents = AGENT_REGISTRY.list_agents()
     active_agent = AGENT_REGISTRY.get(agent) or available_agents[0]
 
@@ -120,7 +131,7 @@ async def get_chat_page(
 async def send_chat_message(
     request: Request,
     message: str = Form(...),
-    agent_name: str = Form("CodeAgent"),
+    agent_name: str = Form("OpsAssistant"),
     thread_id: str = Form(DEFAULT_THREAD_ID),
 ):
     """Process user message, execute agent turn, apply seam policy interception,
@@ -131,7 +142,7 @@ async def send_chat_message(
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     session = _get_or_create_session(thread_id, agent_name)
-    agent = AGENT_REGISTRY.get(agent_name) or AGENT_REGISTRY.get("CodeAgent")
+    agent = AGENT_REGISTRY.get(agent_name) or AGENT_REGISTRY.get("OpsAssistant")
 
     # 1. Append User Message
     user_msg_id = f"msg_{uuid.uuid4().hex[:8]}"
@@ -173,80 +184,43 @@ async def send_chat_message(
 
     # 3. Governance Seam Interception (if agent proposed a tool action)
     if turn_result.action:
-        outcome = evaluate_action_at_seam(
-            turn_result.action,
-            policy_id=turn_result.policy_id,
-            policy_reason=turn_result.policy_reason,
+        if turn_result.policy_id and "policy_id" not in turn_result.action.payload:
+            turn_result.action.payload["policy_id"] = turn_result.policy_id
+        if turn_result.policy_reason and "policy_reason" not in turn_result.action.payload:
+            turn_result.action.payload["policy_reason"] = turn_result.policy_reason
+
+        executor = GuardedExecutor(journal=JOURNAL_STORE)
+        ctx = ExecutionContext(
+            actor=agent.name,
+            thread_id=thread_id,
+            checkpoint_step=len(session),
         )
+        outcome = await executor.execute(turn_result.action, ctx)
 
         agent_msg.action_proposal = {
             "id": turn_result.action.id,
             "name": turn_result.action.name,
             "kind": turn_result.action.kind.value,
             "payload": turn_result.action.payload,
+            "run_id": turn_result.action.run_id,
+            "thread_id": turn_result.action.thread_id,
         }
 
         if isinstance(outcome, Denied):
             agent_msg.verdict = "denied"
-            agent_msg.policy_id = outcome.policy
-            agent_msg.policy_reason = outcome.reason
-            # Record terminal denial to WAL
-            JOURNAL_STORE.append(
-                JournalEvent(
-                    id=f"ev_deny_{uuid.uuid4().hex[:6]}",
-                    run_id=f"run_{thread_id}",
-                    thread_id=thread_id,
-                    action_id=turn_result.action.id,
-                    checkpoint_step=len(session),
-                    kind=EventKind.ACTION_DENIED.value,
-                    actor="PolicyEngine",
-                    status="Denied",
-                    description=f"DENIED (Terminal): Prohibited by {outcome.policy}",
-                    payload={"policy_id": outcome.policy, "reason": outcome.reason, "action": turn_result.action.name},
-                    ts=datetime.now(timezone.utc).isoformat(),
-                )
-            )
+            agent_msg.policy_id = outcome.policy or turn_result.policy_id
+            agent_msg.policy_reason = outcome.reason or turn_result.policy_reason
 
         elif isinstance(outcome, Pending):
             agent_msg.verdict = "escalated"
             agent_msg.gate_id = outcome.gate_request.gate_id
-            agent_msg.policy_id = turn_result.policy_id
-            agent_msg.policy_reason = turn_result.policy_reason
-            # Record HITL Gate Request to WAL
-            JOURNAL_STORE.append(
-                JournalEvent(
-                    id=f"ev_gate_{uuid.uuid4().hex[:6]}",
-                    run_id=f"run_{thread_id}",
-                    thread_id=thread_id,
-                    action_id=turn_result.action.id,
-                    checkpoint_step=len(session),
-                    kind=EventKind.GATE_REQUESTED.value,
-                    actor="GuardedExecutor",
-                    status="Pending",
-                    description=f"HITL Gate #{outcome.gate_request.gate_id}: Operator authorization requested",
-                    payload={"gate_id": outcome.gate_request.gate_id, "policy": turn_result.policy_id},
-                    ts=datetime.now(timezone.utc).isoformat(),
-                )
-            )
+            agent_msg.policy_id = outcome.gate_request.context.get("rule_id") or turn_result.policy_id
+            agent_msg.policy_reason = outcome.gate_request.context.get("reason") or turn_result.policy_reason
 
         elif isinstance(outcome, Allowed):
             agent_msg.verdict = "allowed"
-            agent_msg.execution_result = turn_result.execution_result or "Dispatched safely to sandbox."
-            # Record completed action to WAL
-            JOURNAL_STORE.append(
-                JournalEvent(
-                    id=f"ev_allow_{uuid.uuid4().hex[:6]}",
-                    run_id=f"run_{thread_id}",
-                    thread_id=thread_id,
-                    action_id=turn_result.action.id,
-                    checkpoint_step=len(session),
-                    kind=EventKind.ACTION_COMPLETED.value,
-                    actor="SandboxRunner",
-                    status="Succeeded",
-                    description=f"Executed tool {turn_result.action.name}() under policy clearance",
-                    payload={"tool": turn_result.action.name, "result": agent_msg.execution_result},
-                    ts=datetime.now(timezone.utc).isoformat(),
-                )
+            agent_msg.execution_result = turn_result.execution_result or (
+                str(outcome.result) if outcome.result is not None else "Dispatched safely to sandbox."
             )
 
     elif turn_result.execution_result:
@@ -282,81 +256,52 @@ async def decide_chat_action(
     if not target_msg:
         raise HTTPException(status_code=404, detail="Action not found in chat history")
 
+    proposal = target_msg.action_proposal or {}
+    action = Action(
+        id=action_id,
+        kind=ActionKind(proposal.get("kind", ActionKind.TOOL.value)),
+        name=proposal.get("name", "tool"),
+        payload=proposal.get("payload", {}),
+        run_id=proposal.get("run_id") or f"run_{thread_id}",
+        thread_id=proposal.get("thread_id") or thread_id,
+    )
+    ctx = ExecutionContext(
+        actor=target_msg.agent_name or "OpsAssistant",
+        thread_id=thread_id,
+        checkpoint_step=len(session) + 1,
+    )
+    gate_id = target_msg.gate_id or f"gate-{action_id}"
+
+    executor = GuardedExecutor(journal=JOURNAL_STORE)
+
     if verdict.lower() in ("approve", "approved"):
+        decision = GateDecision(
+            gate_id=gate_id,
+            verdict=GateVerdict.APPROVE,
+            reason="Authorized by Operator (Raghav)",
+            decided_by="Raghav (Security Operator)",
+        )
+        outcome = await executor.execute(action, ctx, approval=decision)
+
         target_msg.verdict = "approved"
-        target_msg.execution_result = f"Authorized by Operator (Raghav). Dispatched to isolated sandbox and executed successfully."
-        # Journal gate decision and completion
-        JOURNAL_STORE.append(
-            JournalEvent(
-                id=f"ev_dec_{uuid.uuid4().hex[:6]}",
-                run_id=f"run_{thread_id}",
-                thread_id=thread_id,
-                action_id=action_id,
-                checkpoint_step=len(session),
-                kind=EventKind.GATE_DECIDED.value,
-                actor="Raghav (Security Operator)",
-                status="Approved",
-                description=f"Operator approved action #{action_id} from chat console",
-                payload={"verdict": "approve", "gate_id": target_msg.gate_id},
-                ts=datetime.now(timezone.utc).isoformat(),
-            )
+        exec_out = outcome.result if isinstance(outcome, Allowed) else outcome
+        target_msg.execution_result = (
+            f"Authorized by Operator (Raghav). Dispatched to isolated sandbox and executed successfully."
         )
-        JOURNAL_STORE.append(
-            JournalEvent(
-                id=f"ev_comp_{uuid.uuid4().hex[:6]}",
-                run_id=f"run_{thread_id}",
-                thread_id=thread_id,
-                action_id=action_id,
-                checkpoint_step=len(session) + 1,
-                kind=EventKind.ACTION_COMPLETED.value,
-                actor="SandboxRunner",
-                status="Succeeded",
-                description=f"Post-approval execution of {target_msg.action_proposal.get('name')} succeeded",
-                payload={"action_id": action_id},
-                ts=datetime.now(timezone.utc).isoformat(),
-            )
-        )
-        # Register run in sandbox store
-        SANDBOX_RUNS_STORE.insert(
-            0,
-            {
-                "id": f"sb_{uuid.uuid4().hex[:6]}",
-                "action_id": action_id,
-                "agent": target_msg.agent_name or "CodeAgent",
-                "tool_name": target_msg.action_proposal.get("name", "tool"),
-                "adapter": "Subprocess (cgroups v2 restricted)",
-                "adapter_short": "cgroups_v2",
-                "command": json.dumps(target_msg.action_proposal.get("payload", {})),
-                "exit_code": 0,
-                "status": "SUCCESS",
-                "duration_ms": 185,
-                "cpu_ms": 38,
-                "peak_memory_mb": 19.4,
-                "scrubbed_secrets_count": 2,
-                "scrubbed_secrets": ["AWS_SECRET_KEY", "JWT_SECRET"],
-                "executed_at": datetime.now(timezone.utc).isoformat(),
-                "stdout": f"[AEGIS-SANDBOX] Action {action_id} executed successfully with operator clearance.",
-                "stderr": "",
-            },
-        )
+        # NOTE: no manual sandbox-store insert here — the executor journaled
+        # EXECUTION_STARTED/ACTION_COMPLETED above, and the Sandbox Runs panel
+        # projects its rows from the journal (app/projections.py).
     else:
+        decision = GateDecision(
+            gate_id=gate_id,
+            verdict=GateVerdict.DENY,
+            reason="Rejected by Operator (Raghav)",
+            decided_by="Raghav (Security Operator)",
+        )
+        await executor.execute(action, ctx, approval=decision)
+
         target_msg.verdict = "denied"
         target_msg.execution_result = f"Rejected by Operator (Raghav). Action was aborted; no side effects occurred."
-        JOURNAL_STORE.append(
-            JournalEvent(
-                id=f"ev_dec_{uuid.uuid4().hex[:6]}",
-                run_id=f"run_{thread_id}",
-                thread_id=thread_id,
-                action_id=action_id,
-                checkpoint_step=len(session),
-                kind=EventKind.GATE_DECIDED.value,
-                actor="Raghav (Security Operator)",
-                status="Denied",
-                description=f"Operator declined action #{action_id} from chat console",
-                payload={"verdict": "deny", "gate_id": target_msg.gate_id},
-                ts=datetime.now(timezone.utc).isoformat(),
-            )
-        )
 
     # Return updated message list
     return templates.TemplateResponse(
@@ -369,7 +314,7 @@ async def decide_chat_action(
 @router.post("/chat/reset", response_class=HTMLResponse)
 async def reset_chat_session(
     request: Request,
-    agent_name: str = Form("CodeAgent"),
+    agent_name: str = Form("OpsAssistant"),
 ):
     """Start a fresh chat thread session."""
     new_thread_id = f"thread_chat_{uuid.uuid4().hex[:6]}"
@@ -421,8 +366,13 @@ async def external_agent_webhook(request: Request):
             thread_id=thread_id,
         )
 
-        # Evaluate against seam
-        outcome = evaluate_action_at_seam(action_obj, policy_id=raw_action.get("policy_id"))
+        if raw_action.get("policy_id"):
+            action_obj.payload["policy_id"] = raw_action.get("policy_id")
+
+        # Evaluate against seam using GuardedExecutor
+        executor = GuardedExecutor(journal=JOURNAL_STORE)
+        ctx = ExecutionContext(actor=agent_name, thread_id=thread_id)
+        outcome = await executor.execute(action_obj, ctx)
         if isinstance(outcome, Denied):
             outcome_dict = {"verdict": "denied", "policy": outcome.policy, "reason": outcome.reason, "terminal_lock": 5}
         elif isinstance(outcome, Pending):

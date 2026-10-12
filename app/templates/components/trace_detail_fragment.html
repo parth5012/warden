@@ -15,6 +15,10 @@
         <div style="text-align: right; font-family: var(--font-mono); font-size: 0.75rem;">
             <div style="color: var(--text-primary); font-weight: 600;">{{ trace.total_latency_ms }} ms total</div>
             <div style="color: var(--text-muted);">{{ trace.total_tokens }} tokens consumed</div>
+            <div style="color: var(--text-muted);">{{ trace.input_tokens|default("—") }} input · {{ trace.output_tokens|default("—") }} output</div>
+            {% if trace.total_cost_usd is defined %}
+            <div style="color: var(--text-muted);">${{ "%.6f"|format(trace.total_cost_usd) }} recorded cost estimate/calculation</div>
+            {% endif %}
         </div>
     </div>
 

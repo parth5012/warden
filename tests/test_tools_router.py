@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from warden.models import ActionKind, Allowed, Denied, Error, Pending
 from warden.policy.engine import PolicyEngine
 from warden.policy.layer_deberta import FakeInjectionScorer
@@ -53,7 +55,7 @@ def test_demo_flow_four_beats() -> None:
     assert len(ToolRouter(ENG).describe_demo_flow()) == 4
 
 
-async def test_groq_stub_string(monkeypatch) -> None:
+async def test_groq_stub_string(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("warden.tools.router.get_router_llm", lambda: None)
     assert "stub draft" in await draft_with_groq("weekly ops report")
 

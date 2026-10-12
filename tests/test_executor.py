@@ -92,7 +92,12 @@ async def test_allow_executes_registered_handler_exactly_once() -> None:
 
     events = await journal.query()
     event_kinds = [e.kind for e in events]
-    assert event_kinds == ["action_requested", "action_completed"]
+    assert event_kinds == [
+        "action_requested",
+        "policy_evaluated",
+        "execution_started",
+        "action_completed",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +144,8 @@ async def test_handler_not_invoked_before_policy_evaluation_completes() -> None:
     assert timeline == [
         "journal_action_requested",
         "policy_evaluated",
+        "journal_policy_evaluated",
+        "journal_execution_started",
         "handler_executed",
         "journal_action_completed",
     ]
@@ -173,7 +180,11 @@ async def test_escalate_returns_pending_and_never_invokes_handler() -> None:
 
     events = await journal.query()
     event_kinds = [e.kind for e in events]
-    assert event_kinds == ["action_requested", "gate_requested"]
+    assert event_kinds == [
+        "action_requested",
+        "policy_evaluated",
+        "gate_requested",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +215,11 @@ async def test_deny_returns_denied_and_never_invokes_handler() -> None:
 
     events = await journal.query()
     event_kinds = [e.kind for e in events]
-    assert event_kinds == ["action_requested", "action_denied"]
+    assert event_kinds == [
+        "action_requested",
+        "policy_evaluated",
+        "action_denied",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +380,12 @@ async def test_handler_exception_returns_typed_error_outcome() -> None:
 
     events = await journal.query()
     event_kinds = [e.kind for e in events]
-    assert event_kinds == ["action_requested", "action_failed"]
+    assert event_kinds == [
+        "action_requested",
+        "policy_evaluated",
+        "execution_started",
+        "action_failed",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +640,8 @@ async def test_executor_allows_llm_through_client_exactly_once() -> None:
     events = await journal.query()
     assert [event.kind for event in events] == [
         "action_requested",
+        "policy_evaluated",
+        "execution_started",
         "action_completed",
     ]
     assert all("messages" not in str(event.payload) for event in events)
@@ -658,6 +680,7 @@ async def test_executor_denies_llm_without_calling_provider() -> None:
     assert calls == 0
     assert [event.kind for event in await journal.query()] == [
         "action_requested",
+        "policy_evaluated",
         "action_denied",
     ]
 

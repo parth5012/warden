@@ -345,6 +345,8 @@ def test_api_llm_invoke_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     ]
     assert {event.kind for event in events} == {
         "action_requested",
+        "policy_evaluated",
+        "execution_started",
         "action_completed",
         "llm_usage",
     }

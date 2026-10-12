@@ -78,7 +78,7 @@ class PolicyRule:
 
 def _is_destructive_sql(action: Action) -> bool:
     """Check if action is a destructive SQL operation."""
-    if action.name in ("drop_table", "truncate_table", "drop_database"):
+    if action.name in ("sql_drop", "drop_table", "truncate_table", "drop_database"):
         return True
     query = str(
         action.payload.get("query")
@@ -122,17 +122,43 @@ def _is_destructive_sql(action: Action) -> bool:
 
 def _is_prohibited_sensitive_file(action: Action) -> bool:
     """Check if action targets an unauthorized sensitive file."""
-    path_val = action.payload.get("path") or action.payload.get("file_path")
+    path_val = (
+        action.payload.get("path")
+        or action.payload.get("file_path")
+        or action.payload.get("target_resource")
+    )
     if not isinstance(path_val, str) or not path_val.strip():
         return True
     from warden.tools.filesystem import is_prohibited_sensitive_path
 
+    if action.name == "read_file" and path_val.startswith("/workspace/"):
+        return is_prohibited_sensitive_path(path_val.removeprefix("/workspace/"))
     return is_prohibited_sensitive_path(path_val)
 
 
 def get_seed_policies() -> list[PolicyRule]:
     """Default seed policy rules established in architecture."""
     return [
+        PolicyRule(
+            name="deny_terminal_policy_hints",
+            decision=PolicyDecision.DENY,
+            predicate=lambda action, ctx: action.payload.get("policy_id")
+            in {"SEC-HOST-00", "SEC-DB-01"},
+            description="Terminal policy hint requires unconditional denial",
+        ),
+        PolicyRule(
+            name="escalate_policy_hints",
+            decision=PolicyDecision.ESCALATE,
+            predicate=lambda action, ctx: action.payload.get("policy_id")
+            in {
+                "SEC-FS-04",
+                "SEC-DB-02",
+                "SEC-NET-01",
+                "POL_EGRESS_EXTERNAL_MSG",
+                "POL_INFRA_MUTATION",
+            },
+            description="Agent policy hint requires operator approval",
+        ),
         PolicyRule(
             name="no_destructive_sql",
             decision=PolicyDecision.DENY,
@@ -142,7 +168,7 @@ def get_seed_policies() -> list[PolicyRule]:
         PolicyRule(
             name="deny_unauthorized_sensitive_files",
             decision=PolicyDecision.DENY,
-            action_names=("read_file_sensitive",),
+            action_names=("read_file", "read_file_sensitive"),
             predicate=lambda action, ctx: _is_prohibited_sensitive_file(action),
             description="Unauthorized sensitive files and path traversal are prohibited",
         ),
@@ -161,7 +187,13 @@ def get_seed_policies() -> list[PolicyRule]:
         PolicyRule(
             name="escalate_sensitive_operations",
             decision=PolicyDecision.ESCALATE,
-            action_names=("exec_db_mutation", "read_file_sensitive"),
+            action_names=(
+                "exec_db_mutation",
+                "read_file_sensitive",
+                "batch_delete_files",
+                "mass_delete",
+                "sql_schema_migration",
+            ),
             description="Database mutations and sensitive file reads require authorization",
         ),
         PolicyRule(
@@ -171,6 +203,8 @@ def get_seed_policies() -> list[PolicyRule]:
                 "read_table",
                 "query_table",
                 "list_files",
+                "read_file",
+                "sql_query",
                 "get_status",
                 "get_system_metrics",
                 "read_service_logs",
@@ -201,6 +235,7 @@ class PolicyEngine:
         clean_threshold: float = 0.20,
         scorer: InjectionScorer | None = None,
         clef: Any | None = None,
+        fallback_to_layers: bool = False,
     ) -> None:
         self._rules = list(rules) if rules is not None else get_seed_policies()
         self._default_decision = default_decision
@@ -209,6 +244,11 @@ class PolicyEngine:
         self._clean_threshold = clean_threshold
         self._scorer = scorer or FakeInjectionScorer()
         self._clef = clef or FakeClefClient()
+        self._fallback_to_layers = fallback_to_layers
+
+    @property
+    def clef(self) -> Any:
+        return self._clef
 
     @classmethod
     def with_seed_policies(cls) -> PolicyEngine:
@@ -304,6 +344,15 @@ class PolicyEngine:
                 reason=rule.description or f"Matched policy rule: {rule.name}",
             )
 
+        if self._fallback_to_layers:
+            actor = getattr(ctx, "actor", None) or "operator"
+            verdict = self._evaluate_layers(action.name, action.payload, actor)
+            return PolicyResult(
+                decision=verdict.decision,
+                policy_name=verdict.policy,
+                reason=verdict.reason,
+            )
+
         if not isinstance(self._default_decision, PolicyDecision):
             raise PolicyEvaluationError(
                 f"Invalid default decision: {self._default_decision!r}"
@@ -350,11 +399,16 @@ class PolicyEngine:
                 layer="L1-deberta",
                 scores={"injection": injection.score},
             )
-        if action_name in {"send_email", "restart_service"}:
+        policy_hint = str(payload.get("policy_id") or payload.get("policy") or "")
+        if action_name in {"send_email", "restart_service"} or policy_hint in {
+            "SEC-NET-01",
+            "POL_EGRESS_EXTERNAL_MSG",
+            "POL_INFRA_MUTATION",
+        }:
             policy = (
-                "POL_EGRESS_EXTERNAL_MSG"
-                if action_name == "send_email"
-                else "POL_INFRA_MUTATION"
+                "POL_INFRA_MUTATION"
+                if action_name == "restart_service" or policy_hint == "POL_INFRA_MUTATION"
+                else policy_hint or "POL_EGRESS_EXTERNAL_MSG"
             )
             return PolicyVerdict(
                 decision=PolicyDecision.ESCALATE,

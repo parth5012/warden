@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from warden.config import settings
 from warden.demo_graph import build_demo_graph
 from warden.checkpoint import CheckpointManager
+from backend.api.llm import _make_executor
 from backend.api.audit import record_audit_event
 from backend.api.inbox import PENDING_GATES
 
@@ -35,6 +36,12 @@ router = APIRouter(prefix="/runs", tags=["Runs & Decision Graph"])
 # ---------------------------------------------------------------------------
 _memory_saver = MemorySaver()
 _demo_graph = build_demo_graph(_memory_saver)
+_agent_graph = build_demo_graph(
+    _memory_saver,
+    executor=_make_executor(),
+    llm_provider="groq",
+    llm_model=settings.groq_model,
+)
 
 RUNS_CACHE: dict[str, dict[str, Any]] = {}
 _runs_lock = asyncio.Lock()
@@ -130,8 +137,8 @@ async def launch_new_run(prompt: str, thread_id: str | None = None) -> dict[str,
     config: RunnableConfig = {"configurable": {"thread_id": tid}}
 
     # Invoke graph with prompt
-    await _demo_graph.ainvoke({"messages": [prompt]}, config=config)
-    state = await _demo_graph.aget_state(config)
+    await _agent_graph.ainvoke({"messages": [prompt]}, config=config)
+    state = await _agent_graph.aget_state(config)
 
     next_nodes = list(state.next) if hasattr(state, "next") else []
     is_parked = bool(state.tasks and any(t.interrupts for t in state.tasks))
@@ -147,6 +154,7 @@ async def launch_new_run(prompt: str, thread_id: str | None = None) -> dict[str,
         "approved": None,
         "summary": summary,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "guarded_llm": True,
     }
 
     async with _runs_lock:
@@ -186,11 +194,21 @@ async def resume_run(thread_id: str, decision: str) -> dict[str, Any]:
 
     # Resume the LangGraph execution
     try:
-        await _demo_graph.ainvoke(Command(resume=verdict), config=config)
+        graph = (
+            _agent_graph
+            if RUNS_CACHE.get(thread_id, {}).get("guarded_llm")
+            else _demo_graph
+        )
+        await graph.ainvoke(Command(resume=verdict), config=config)
     except Exception:
         pass
 
-    state = await _demo_graph.aget_state(config)
+    graph = (
+        _agent_graph
+        if RUNS_CACHE.get(thread_id, {}).get("guarded_llm")
+        else _demo_graph
+    )
+    state = await graph.aget_state(config)
     next_nodes = list(state.next) if hasattr(state, "next") else []
     is_parked = bool(state.tasks and any(t.interrupts for t in state.tasks))
     values = dict(state.values) if state and hasattr(state, "values") else {}

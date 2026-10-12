@@ -38,7 +38,7 @@ from typing import Any, Awaitable, Callable
 # import redaction logic from the client (which would create a cycle back into
 # warden.llm.client -> providers).  Kept in sync with warden.llm.client.SECRET_PATTERN.
 _SECRET_PATTERN = re.compile(
-    r"(?:bearer\s+[a-zA-Z0-9_\-\.]{15,}|sk-[a-zA-Z0-9_\-]{20,}|key=[a-zA-Z0-9_\-]{15,})",
+    r"(?:bearer\s+[a-zA-Z0-9_\-\.]{15,}|sk-[a-zA-Z0-9_\-]{20,}|gsk_[a-zA-Z0-9_\-]{20,}|key=[a-zA-Z0-9_\-]{15,})",
     re.IGNORECASE,
 )
 
@@ -176,11 +176,10 @@ class _EnvironmentCredentialProvider:
 class OpenAIProviderAdapter(ProviderAdapter):
     """OpenAI-compatible provider adapter (OpenAI, Groq, Together, etc.).
 
-    Only the model name slice (`gpt-4o`, `gpt-4o-mini`, `o1`, ...) is mirrored
-    from the *request*, while the *API key* and *base URL* are read from the
-    environment variables at call time.  This keeps provider configuration
-    centralized in one place and avoids leaking credentials into code or
-    logs.
+    The request model identifier is passed to the provider unchanged, except
+    for OpenAI-qualified model IDs that need their prefix removed. Credentials
+    and base URL are injected at call time so they never enter action payloads
+    or logs.
 
     The adapter deliberately **does not** retry on its own.  Any retryable
     provider error it raises is classified as retryable so that the existing
@@ -254,7 +253,7 @@ class OpenAIProviderAdapter(ProviderAdapter):
         # request may carry provider-specific names (e.g. "openai/gpt-4o") but
         # the SDK only understands a bare model identifier.
         model = request.model.strip()
-        if "/" in model:
+        if request.provider.lower() == PROVIDER_OPENAI and model.startswith("openai/"):
             model = model.rsplit("/", 1)[-1].strip()
 
         messages = [
