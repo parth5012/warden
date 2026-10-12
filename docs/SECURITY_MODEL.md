@@ -109,6 +109,15 @@ Once a policy decision of `deny` is returned:
 
 This is enforced at the code level — `execute()` must not have any code path that calls `sandbox.run()` or `llm.invoke()` after receiving `deny`.
 
+### Layered Evaluation Defense (L0, L1, L2)
+
+To prevent both deterministic syntax bypasses and subtle semantic jailbreaks, `PolicyEngine` evaluates through three defensive layers before issuing a verdict:
+1. **L0 (Static AST/ACL):** Blocks forbidden SQL/Shell syntax and sensitive paths (`< 1ms`).
+2. **L1 (DeBERTa-v3):** High-throughput sequence classifier blocking prompt injection and payload tampering (`~15ms`).
+3. **L2 (Granite Guardian):** Contextual semantic reasoner validating tool parameters against user intent and agent role authorization (`~120ms`).
+
+See [`LAYERED_SAFETY_ARCHITECTURE.md`](LAYERED_SAFETY_ARCHITECTURE.md) for full contracts and fail-closed timeout specifications.
+
 ---
 
 ## 5. Human Approval (HITL) — Security Constraints

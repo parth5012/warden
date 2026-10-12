@@ -42,6 +42,7 @@ This directory contains shared architecture, API, data model, security, testing,
 | Document | Purpose | Status |
 |---|---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Component diagrams, execution flows, mermaid diagrams | Available |
+| [`LAYERED_SAFETY_ARCHITECTURE.md`](LAYERED_SAFETY_ARCHITECTURE.md) | 3-tier policy engine: L0 static AST, L1 DeBERTa, L2 Granite Guardian | Available |
 | [`API_CONTRACT.md`](API_CONTRACT.md) | HTTP routes, request/response schemas, auth requirements | Available |
 | [`DATA_MODEL.md`](DATA_MODEL.md) | Domain types, persistence schemas, contract definitions | Available |
 | [`INTEGRATION_GUIDE.md`](INTEGRATION_GUIDE.md) | Component wiring, integration order, mock interfaces | Available |

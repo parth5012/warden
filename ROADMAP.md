@@ -12,7 +12,7 @@ One graph, four proof points:
 1. **Telemetry** — LLM calls + tool calls journaled: token cost, latency, tool usage (projections over the journal)
 2. **HITL gate** — email send → policy `escalate` → `Pending` → re-entry helper parks → approvals inbox shows the request → approve with named key → action executes
 3. **Guardrail deny** — `DROP TABLE` → policy `deny` → terminal, no approval possible (demo the refusal)
-4. **Sandbox** — shell tool `rm -rf` → contained subprocess with timeout
+4. **Sandbox** — shell tool `rm -rf` → contained in Docker container with network isolation
 
 Exit criteria: judge can watch all four beats live; `pytest` green; journal survives a kill -9 mid-park (write-ahead replay works).
 
@@ -35,6 +35,6 @@ Exit criteria: live rule-change demo, `policy_versions` shows who/when/what.
 
 ## Explicitly out of scope (for now)
 - Login/roles (lock 8: named keys only)
-- Docker sandbox (subprocess is enough; Docker adapter only if judges demand)
+  - Subprocess sandbox adapter (dropped in favor of Docker network isolation, DECISIONS.md entry 1)
 - Policy override by humans (lock 5: DENY is terminal)
 - Anything in `CONTEXT.md` open-questions list that isn't picked up by a phase

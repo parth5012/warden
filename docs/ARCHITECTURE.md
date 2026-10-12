@@ -274,3 +274,41 @@ CheckpointManager.create(conn_string)    # async context manager
 ```
 
 See [`features/09_postgres_checkpoint/README.md`](features/09_postgres_checkpoint/README.md) for full documentation.
+
+---
+
+## 10. Layered Policy Engine Architecture (Static + DeBERTa + Granite Guardian)
+
+To balance microsecond execution for obvious violations against deep contextual intelligence for subtle privilege escalation, `PolicyEngine` employs a 3-tier safety stack:
+
+```
+GuardedExecutor.execute(action, ctx)
+             │
+             ▼
+  ┌────────────────────────────────────────────────────────┐
+  │ L0: Static AST & Path Rules (< 1ms)                    │
+  │     - SQL/Shell ASTs, forbidden path ACLs, regex       │
+  └──────────────────────────┬─────────────────────────────┘
+             Match           │ Clean
+               ▼             ▼
+          DENY / ESCALATE  ┌───────────────────────────────────────────┐
+          (Early Exit)     │ L1: DeBERTa-v3 Fast Filter (10-25ms)      │
+                           │     - Injection scoring, payload anomalies│
+                           └─────────────────┬─────────────────────────┘
+                               Score >= 0.85 │ Score < 0.20 & Read-Only
+                                     ▼       │       ▼
+                                   DENY      │     ALLOW (Fast-Path)
+                                (Terminal)   │
+                                             ▼ (Mutating or ambiguous)
+                           ┌───────────────────────────────────────────┐
+                           │ L2: Granite Guardian 2B/8B (80-150ms)     │
+                           │     - Contextual user-intent vs role      │
+                           └─────────────────┬─────────────────────────┘
+                                             │
+                             ┌───────────────┼───────────────┐
+                             ▼               ▼               ▼
+                           ALLOW          ESCALATE          DENY
+                                           (HITL)        (Terminal)
+```
+
+See [`LAYERED_SAFETY_ARCHITECTURE.md`](LAYERED_SAFETY_ARCHITECTURE.md) for detailed contracts, latency budgets, and sidecar topology.

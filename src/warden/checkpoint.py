@@ -14,9 +14,17 @@ wrap those — it manages the infrastructure they depend on.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import sys
 from typing import TYPE_CHECKING, Any, TypeAlias
+
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command

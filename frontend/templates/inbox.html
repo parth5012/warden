@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Approvals Inbox — Warden{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Operator Approval Inbox</h1>
+    <p class="page-desc">Human-in-the-loop (HITL) gate requests parked by policy escalation.</p>
+  </div>
+  <div>
+    <button class="btn btn-secondary" hx-get="/inbox" hx-select="#inbox-list" hx-target="#inbox-list" hx-swap="outerHTML">
+      Refresh Inbox
+    </button>
+  </div>
+</div>
+
+<div id="inbox-list" hx-trigger="every 5s" hx-get="/inbox" hx-select="#inbox-list" hx-swap="outerHTML">
+  {% if pending_gates %}
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+      {% for gate in pending_gates %}
+      <div class="card" id="gate-card-{{ gate.id }}" style="border-left: 4px solid var(--amber);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge badge-pending">PENDING APPROVAL</span>
+              <span style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-muted);">Thread: {{ gate.thread_id }}</span>
+            </div>
+            <h3 style="font-size: 1.15rem; margin-top: 0.4rem; font-weight: 700;">Action: {{ gate.action_name }}</h3>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-dim); font-family: var(--font-mono);">
+            {{ gate.created_at|default("Just now") }}
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <p style="font-size: 0.95rem; color: var(--text-main); margin-bottom: 0.5rem;"><strong>Question:</strong> {{ gate.ask }}</p>
+          <pre class="code-view">{{ gate.payload | tojson(indent=2) }}</pre>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <form hx-post="/api/inbox/{{ gate.id }}/resolve" hx-target="#gate-card-{{ gate.id }}" hx-swap="outerHTML" style="display: inline;">
+            <input type="hidden" name="decision" value="deny">
+            <button type="submit" class="btn btn-deny">Deny</button>
+          </form>
+          <form hx-post="/api/inbox/{{ gate.id }}/resolve" hx-target="#gate-card-{{ gate.id }}" hx-swap="outerHTML" style="display: inline;">
+            <input type="hidden" name="decision" value="approve">
+            <button type="submit" class="btn btn-approve">Approve Action</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="card empty-state">
+      <div class="empty-state-title">Inbox is clear! ✨</div>
+      <p>No actions currently waiting for human approval.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
