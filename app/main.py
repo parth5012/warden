@@ -1,7 +1,13 @@
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Dict, Any, List
+
+# Ensure src/ is in sys.path so 'warden.*' imports resolve in all runtimes
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +18,7 @@ from app.policies import router as policies_router
 from app.leases import router as leases_router
 from app.traces import router as traces_router
 from app.sandbox import router as sandbox_router
+from app.chat import router as chat_router
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -19,6 +26,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(title="Warden AI Governance Console", version="2.0.0")
 app.include_router(agents_router)
+app.include_router(chat_router)
 app.include_router(audit_router)
 app.include_router(policies_router)
 app.include_router(leases_router)

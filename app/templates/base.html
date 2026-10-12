@@ -9,6 +9,7 @@
       href="{{ url_for('static', path='/css/update05_agents.css') }}">
     <link rel="stylesheet" href="/static/css/audit.css">
     <link rel="stylesheet" href="/static/css/governance_pages.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
     <!-- HTMX for reactive, server-driven UI interactions -->
     <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
     <script src="/static/js/warden.js"></script>
@@ -38,6 +39,12 @@
                         <rect x="3" y="16" width="7" height="5"></rect>
                     </svg>
                     Command Center
+                </a>
+                <a href="/chat" class="nav-link {% if active_page == 'chat' %}active{% endif %}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    Agent Chat
                 </a>
                 <a href="/approvals" class="nav-link {% if active_page == 'approvals' %}active{% endif %}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

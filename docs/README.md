@@ -46,6 +46,7 @@ This directory contains shared architecture, API, data model, security, testing,
 | [`API_CONTRACT.md`](API_CONTRACT.md) | HTTP routes, request/response schemas, auth requirements | Available |
 | [`DATA_MODEL.md`](DATA_MODEL.md) | Domain types, persistence schemas, contract definitions | Available |
 | [`INTEGRATION_GUIDE.md`](INTEGRATION_GUIDE.md) | Component wiring, integration order, mock interfaces | Available |
+| [`AGENT_INTEGRATION.md`](AGENT_INTEGRATION.md) | Agent chat interface, protocol, and external webhook API | Available |
 
 ### Team and Process
 

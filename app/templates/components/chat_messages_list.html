@@ -1,0 +1,15 @@
+<div class="chat-messages-container" id="chat-messages-box">
+    {% for msg in messages %}
+        {% include "components/chat_message.html" %}
+    {% endfor %}
+
+    <!-- Auto-scroll trigger on content swap -->
+    <script>
+        (function() {
+            var box = document.getElementById('chat-messages-box');
+            if (box) {
+                box.scrollTop = box.scrollHeight;
+            }
+        })();
+    </script>
+</div>
