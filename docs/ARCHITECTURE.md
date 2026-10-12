@@ -1,4 +1,4 @@
-# Warden — Component Architecture
+# Aegis — Component Architecture
 
 > This document provides component-level diagrams, execution flows, and trust boundaries.
 > For the authoritative design decisions, see [`../ARCHITECTURE.md`](../ARCHITECTURE.md) and [`../CONTEXT.md`](../CONTEXT.md).

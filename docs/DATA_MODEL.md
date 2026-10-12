@@ -1,4 +1,4 @@
-# Warden — Data Model
+# Aegis — Data Model
 
 > Single source of truth for domain types, action lifecycle, and persistence schemas.
 > All feature READMEs link here instead of defining their own schemas.

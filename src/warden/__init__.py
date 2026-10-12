@@ -1,6 +1,7 @@
-"""Warden: AI Agent Governance & Human Accountability."""
+"""Aegis: AI Agent Governance & Human Accountability."""
 
-from warden.config import get_groq_llm, settings
+from warden.config import settings
+from warden.journal import InMemoryAuditJournal
 from warden.wrappers import (
     audit_context,
     audit_logged,
@@ -10,7 +11,7 @@ from warden.wrappers import (
 )
 
 __all__ = [
-    "get_groq_llm",
+    "InMemoryAuditJournal",
     "settings",
     "audit_context",
     "audit_logged",
@@ -18,4 +19,3 @@ __all__ = [
     "redact_sensitive_data",
     "structured_log",
 ]
-

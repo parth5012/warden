@@ -8,15 +8,15 @@
     <div>
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
             <h1 class="page-title" style="margin-bottom: 0;">AI Agent Governance Chat</h1>
-            <span class="storage-mode-pill live" title="Direct interactive seam interception with active agents">
-                <span class="mode-dot"></span> LIVE SEAM INTERCEPTION
+            <span class="storage-mode-pill demo" title="This page uses deterministic demo agents and does not call a provider">
+                <span class="mode-dot"></span> SIMULATION
             </span>
             <span class="storage-mode-pill demo" title="Operations evaluated against L1/L2 policies in real time">
                 <span class="mode-dot"></span> HITL GATE CAPABLE
             </span>
         </div>
         <p class="page-subtitle">
-            Directly interact with AI agents. All proposed tool actions cross the GuardedExecutor seam for real-time policy evaluation and 1-click approvals.
+            This walkthrough uses deterministic demo agents and does not call an LLM provider or execute tools. Use the <a href="/#llm-guard-form">Guarded LLM Dashboard</a> for real provider requests through GuardedExecutor.
         </p>
     </div>
 
@@ -93,7 +93,7 @@
                     🛡 SEAM INTEGRATION
                 </div>
                 <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.45;">
-                    Every proposed action is intercepted at the GuardedExecutor seam. High-risk calls trigger an interactive HITL Interception Gate.
+                    Demo action proposals are evaluated by the simulation policy seam. This page does not execute provider calls or tools.
                 </div>
             </div>
         </div>
@@ -121,7 +121,7 @@
             </div>
 
             <div class="chat-header-actions">
-                <a href="/approvals" class="btn-icon-toggle audit-btn" style="font-size: 0.75rem; text-decoration: none;">
+                <a href="/inbox" class="btn-icon-toggle audit-btn" style="font-size: 0.75rem; text-decoration: none;">
                     Interception Queue →
                 </a>
             </div>

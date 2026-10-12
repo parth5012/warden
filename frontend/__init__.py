@@ -1,1 +1,1 @@
-"""Warden frontend UI views and templates."""
+"""Aegis frontend UI views and templates."""

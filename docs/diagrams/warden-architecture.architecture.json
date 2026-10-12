@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Warden — AI Agent Governance & Human Accountability",
+    "title": "Aegis — AI Agent Governance & Human Accountability",
     "subtitle": "GuardedExecutor seam · journal-first audit · policy guardrails · HITL gates",
     "output": "warden-architecture.html"
   },
@@ -25,7 +25,7 @@
     { "id": "provider", "type": "external", "label": "LLM provider", "sublabel": "OpenAI-compatible", "pos": [1070, 540], "size": [170, 60] }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Warden kernel — warden/ (imports nothing from app/ or agents/)", "wraps": ["projections", "journal", "policy", "runner", "executor", "sandbox", "llm"] },
+    { "kind": "region", "label": "Aegis kernel — warden/ (imports nothing from app/ or agents/)", "wraps": ["projections", "journal", "policy", "runner", "executor", "sandbox", "llm"] },
     { "kind": "region", "label": "Postgres + pgvector — one store", "wraps": ["jevents", "policiesdb", "cpoint"] }
   ],
   "connections": [

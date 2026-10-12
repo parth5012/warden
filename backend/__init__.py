@@ -1,1 +1,1 @@
-"""Warden backend application."""
+"""Aegis backend application."""

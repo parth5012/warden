@@ -348,7 +348,7 @@ def test_command_center_regression(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Command Center" in resp.text
-    assert "Warden" in resp.text
+    assert "Aegis" in resp.text
 
 
 def test_approvals_queue_regression(client: TestClient) -> None:
@@ -356,7 +356,7 @@ def test_approvals_queue_regression(client: TestClient) -> None:
     resp = client.get("/approvals")
     assert resp.status_code == 200
     assert "Approval queue" in resp.text
-    assert "Warden" in resp.text
+    assert "Aegis" in resp.text
 
 
 def test_blast_radius_regression(client: TestClient) -> None:

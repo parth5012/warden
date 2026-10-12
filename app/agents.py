@@ -1,4 +1,4 @@
-"""AI Agents page for the Warden dashboard.
+"""AI Agents page for the Aegis dashboard.
 
 This route intentionally uses illustrative demo data until the agent registry
 is connected to the team's runtime/policy services.
