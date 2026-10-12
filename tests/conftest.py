@@ -29,7 +29,7 @@ def pg_uri() -> Iterator[str]:
     import pgserver
 
     dbdir = tempfile.mkdtemp(prefix="warden-pg-")
-    srv = pgserver.get_server(dbdir)
+    srv = pgserver.get_server(dbdir)  # type: ignore[attr-defined]
     try:
         yield str(srv.get_uri())
     finally:

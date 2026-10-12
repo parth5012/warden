@@ -1,0 +1,12 @@
+<div id="policy-status-{{ policy.id }}">
+    <button
+        class="policy-toggle-btn {% if policy.active %}active{% else %}inactive{% endif %}"
+        hx-post="/policies/{{ policy.id }}/toggle"
+        hx-target="#policy-status-{{ policy.id }}"
+        hx-swap="outerHTML"
+        title="Click to toggle rule enforcement state"
+    >
+        <span class="status-indicator-dot"></span>
+        <span class="status-text">{% if policy.active %}ENFORCED{% else %}DISABLED{% endif %}</span>
+    </button>
+</div>

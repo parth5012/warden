@@ -1,0 +1,75 @@
+<div id="audit-table-wrapper" class="table-container">
+    <table class="audit-table">
+        <thead>
+            <tr>
+                <th style="width: 175px;">Timestamp (UTC)</th>
+                <th style="width: 135px;">Event ID</th>
+                <th style="width: 145px;">Type</th>
+                <th style="width: 120px;">Action ID</th>
+                <th style="width: 120px;">Run ID</th>
+                <th style="width: 130px;">Actor</th>
+                <th style="width: 100px;">Status</th>
+                <th>Event Summary</th>
+                <th style="width: 110px;">Integrity</th>
+                <th style="width: 95px; text-align: right;">Action</th>
+            </tr>
+        </thead>
+        <tbody id="audit-table-body">
+            {% if events %}
+                {% for ev in events %}
+                    {% include "components/audit_event_row.html" %}
+                {% endfor %}
+            {% else %}
+                <tr class="empty-row">
+                    <td colspan="10">
+                        <div class="empty-state">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <div class="empty-title">No audit records found</div>
+                            <div class="empty-desc">No events matched the current search query and filters. Try adjusting your parameters or resetting filters.</div>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination & Results Count Footer -->
+<div class="audit-pagination-bar">
+    <div class="pagination-info">
+        Showing <strong>{{ (current_page - 1) * limit + (1 if total_count > 0 else 0) }}</strong> to <strong>{{ [current_page * limit, total_count]|min }}</strong> of <strong>{{ total_count }}</strong> events
+        {% if q or selected_kind != 'all' or action_id or run_id or selected_actor != 'all' %}
+            <span class="filter-active-tag">(filtered)</span>
+        {% endif %}
+    </div>
+
+    <div class="pagination-controls">
+        {% if has_prev %}
+            <button
+                class="btn-page"
+                hx-get="/audit?q={{ q|urlencode }}&kind={{ selected_kind|urlencode }}&action_id={{ action_id|urlencode }}&run_id={{ run_id|urlencode }}&actor={{ selected_actor|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ prev_page }}&limit={{ limit }}"
+                hx-target="#audit-table-container"
+                hx-swap="innerHTML"
+            >
+                &larr; Previous
+            </button>
+        {% else %}
+            <button class="btn-page disabled" disabled>&larr; Previous</button>
+        {% endif %}
+
+        <span class="page-indicator">Page {{ current_page }} of {{ total_pages }}</span>
+
+        {% if has_next %}
+            <button
+                class="btn-page"
+                hx-get="/audit?q={{ q|urlencode }}&kind={{ selected_kind|urlencode }}&action_id={{ action_id|urlencode }}&run_id={{ run_id|urlencode }}&actor={{ selected_actor|urlencode }}&date_from={{ date_from|urlencode }}&date_to={{ date_to|urlencode }}&page={{ next_page }}&limit={{ limit }}"
+                hx-target="#audit-table-container"
+                hx-swap="innerHTML"
+            >
+                Next &rarr;
+            </button>
+        {% else %}
+            <button class="btn-page disabled" disabled>Next &rarr;</button>
+        {% endif %}
+    </div>
+</div>

@@ -308,10 +308,10 @@ def _resolve_pg_uri(explicit: str | None) -> str:
     if env:
         return env
     try:
-        import pgserver  # type: ignore[import-not-found]
+        import pgserver
 
         os.makedirs(DEFAULT_PG_DIR, exist_ok=True)
-        return str(pgserver.get_server(DEFAULT_PG_DIR).get_uri())
+        return str(pgserver.get_server(DEFAULT_PG_DIR).get_uri())  # type: ignore[attr-defined]
     except Exception:
         print(
             f"warning: pgserver unavailable, falling back to {DEFAULT_PG_URI}",

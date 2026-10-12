@@ -1,0 +1,58 @@
+<tr class="audit-row" id="row-{{ ev.id }}">
+    <td class="col-ts" title="{{ ev.ts }}">
+        <span class="ts-primary">{{ ev.formatted_ts }}</span>
+    </td>
+    <td class="col-id">
+        <code class="audit-code-pill">{{ ev.id }}</code>
+    </td>
+    <td class="col-kind">
+        <span class="badge {{ ev.badge_class }}">{{ ev.kind }}</span>
+    </td>
+    <td class="col-action">
+        {% if ev.action_id %}
+            <a href="/actions/{{ ev.action_id }}" class="action-link" title="View Blast Radius">{{ ev.action_id }}</a>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="col-run">
+        <code class="run-pill" title="Thread: {{ ev.thread_id }}">{{ ev.run_id }}</code>
+    </td>
+    <td class="col-actor">
+        <span class="actor-badge">{{ ev.actor }}</span>
+    </td>
+    <td class="col-status">
+        <span class="status-indicator status-{{ ev.status|lower }}">{{ ev.status }}</span>
+    </td>
+    <td class="col-desc" title="{{ ev.description }}">
+        <span class="desc-text">{{ ev.description }}</span>
+    </td>
+    <td class="col-verify">
+        {% if ev.verification_status == 'Verified' %}
+            <span class="verify-badge verified" title="Cryptographically verified">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Verified
+            </span>
+        {% elif ev.verification_status == 'Verification failed' %}
+            <span class="verify-badge failed" title="Hash chain mismatch!">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg> Failed
+            </span>
+        {% elif ev.verification_status == 'Not verified' %}
+            <span class="verify-badge not-verified" title="Pending verification">Not verified</span>
+        {% else %}
+            <span class="verify-badge unavailable" title="Backend hash verifier module not connected (demo store)">Unavailable</span>
+        {% endif %}
+    </td>
+    <td class="col-actions">
+        <button
+            class="btn-inspect"
+            hx-get="/audit/events/{{ ev.id }}"
+            hx-target="#event-detail-drawer"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('event-detail-backdrop').classList.add('active');"
+            title="Inspect full audit record"
+        >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Inspect
+        </button>
+    </td>
+</tr>

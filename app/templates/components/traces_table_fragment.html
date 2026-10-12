@@ -1,0 +1,105 @@
+<div id="traces-table-container">
+    {% if traces and traces|length > 0 %}
+    <div class="tactical-table-wrapper">
+        <table class="tactical-table traces-table">
+            <thead>
+                <tr>
+                    <th style="width: 170px;">THREAD & RUN ID</th>
+                    <th style="width: 140px;">AGENT</th>
+                    <th>WORKFLOW NODE PIPELINE</th>
+                    <th style="width: 170px;">THREAD STATUS</th>
+                    <th style="width: 130px;">LATENCY & TOKENS</th>
+                    <th style="width: 110px; text-align: right;">INSPECTOR</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trace in traces %}
+                <tr class="trace-row" id="row-{{ trace.thread_id }}">
+                    <td>
+                        <div class="policy-id-block">
+                            <span class="font-mono text-cyan" style="font-weight: 700; font-size: 0.82rem;">{{ trace.thread_id }}</span>
+                            <span class="version-tag font-mono">Run: {{ trace.run_id }}</span>
+                            <span style="font-size: 0.65rem; color: #64748b; font-family: var(--font-mono);">
+                                Step {{ trace.current_step }} · {{ trace.checkpoint_id }}
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span style="font-weight: 600; color: var(--text-primary);">{{ trace.agent }}</span>
+                            <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">
+                                {{ trace.agent_model }}
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                            <div class="node-chain-steps">
+                                {% for node in trace.nodes %}
+                                    <span class="step-node-pill {% if node.status == 'pending' %}step-parked{% elif 'guard' in node.node %}step-guard{% endif %}" title="{{ node.note }} ({{ node.duration_ms }}ms)">
+                                        <span style="color: var(--text-muted); font-size: 0.65rem;">#{{ node.step }}</span>
+                                        {{ node.node }}
+                                    </span>
+                                    {% if not loop.last %}
+                                        <span class="step-arrow">→</span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div style="font-size: 0.74rem; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 480px;">
+                                <span style="color: var(--text-muted);">Prompt:</span> {{ trace.input_prompt }}
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="thread-status-badge {{ trace.status_class }}">
+                            <span class="pill-dot"></span> {{ trace.status }}
+                        </span>
+                        {% if trace.has_pending_gate %}
+                            <div style="margin-top: 0.25rem;">
+                                <a href="/approvals" style="font-size: 0.68rem; color: var(--color-amber); text-decoration: underline; font-family: var(--font-mono);">
+                                    Gate #{{ trace.pending_gate_id }}
+                                </a>
+                            </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span class="font-mono" style="font-size: 0.78rem; color: var(--text-primary); font-weight: 600;">
+                                {{ trace.total_latency_ms }} ms
+                            </span>
+                            <span style="font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono);">
+                                {{ trace.total_tokens }} tokens
+                            </span>
+                        </div>
+                    </td>
+                    <td style="text-align: right;">
+                        <button
+                            class="btn-icon-toggle audit-btn"
+                            style="font-size: 0.72rem; padding: 0.25rem 0.55rem;"
+                            hx-get="/traces/{{ trace.thread_id }}"
+                            hx-target="#trace-modal-body"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('trace-detail-modal').showModal();"
+                            title="Inspect step details and state diff"
+                        >
+                            Inspect
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="tactical-empty-state">
+        <div class="empty-icon-wrap">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+        </div>
+        <h3 class="empty-title">No Execution Traces Found</h3>
+        <p class="empty-subtitle">No LangGraph execution threads match the selected filter criteria.</p>
+        <button class="btn-tactical btn-reset" hx-get="/traces" hx-target="#traces-table-container" hx-swap="innerHTML">
+            Reset Filters
+        </button>
+    </div>
+    {% endif %}
+</div>

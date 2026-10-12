@@ -21,6 +21,7 @@ DEMO_AGENTS = [
         "model": "Claude 3.5 Sonnet",
         "status": "Executing",
         "risk_tier": "High",
+        "risk": "High",
         "task": "Workspace maintenance",
         "permissions": ["Workspace read", "Temporary-file write"],
         "last_seen": "2 min ago",
@@ -34,6 +35,7 @@ DEMO_AGENTS = [
         "model": "GPT-4o",
         "status": "Needs review",
         "risk_tier": "Critical",
+        "risk": "Critical",
         "task": "Proposed production schema migration",
         "permissions": ["Read schema", "Propose DDL"],
         "last_seen": "12 min ago",
@@ -47,6 +49,7 @@ DEMO_AGENTS = [
         "model": "Claude 3 Haiku",
         "status": "Idle",
         "risk_tier": "Medium",
+        "risk": "Medium",
         "task": "Dependency review",
         "permissions": ["Read manifests", "Propose package installs"],
         "last_seen": "28 min ago",
@@ -60,6 +63,7 @@ DEMO_AGENTS = [
         "model": "Llama 3 70B",
         "status": "Restricted",
         "risk_tier": "Medium",
+        "risk": "Medium",
         "task": "External telemetry endpoint request",
         "permissions": ["Read telemetry config", "Propose network egress"],
         "last_seen": "1 hour ago",
@@ -75,19 +79,27 @@ async def agents_page(request: Request):
     active_count = sum(agent["status"] == "Executing" for agent in DEMO_AGENTS)
     review_count = sum(agent["status"] == "Needs review" for agent in DEMO_AGENTS)
     restricted_count = sum(agent["status"] == "Restricted" for agent in DEMO_AGENTS)
+    stats = {
+        "total": len(DEMO_AGENTS),
+        "executing": active_count,
+        "review": review_count,
+        "restricted": restricted_count,
+    }
+    agent_stats = {
+        "total": len(DEMO_AGENTS),
+        "active": active_count,
+        "review": review_count,
+        "restricted": restricted_count,
+    }
     return templates.TemplateResponse(
-    "agents.html",
-    {
-        "request": request,
-        "active_page": "agents",
-        "demo_mode": True,
-        "agents": DEMO_AGENTS,
-        "agent_stats": {
-            "total": len(DEMO_AGENTS),
-            "active": active_count,
-            "review": review_count,
-            "restricted": restricted_count,
+        request=request,
+        name="agents.html",
+        context={
+            "active_page": "agents",
+            "demo_mode": True,
+            "agents": DEMO_AGENTS,
+            "stats": stats,
+            "agent_stats": agent_stats,
         },
-    },
-)
+    )
     

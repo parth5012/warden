@@ -251,7 +251,7 @@
                 <span class="panel-title">Policy Engine Multi-Tier Verdict</span>
             </div>
             <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 1rem;">
-                Evaluated by Yash's Policy Engine against lease <code>#LSE-901</code> at <code class="code-font tabular-nums">2024-01-15 14:32:12 UTC</code>.
+                Evaluated by the Policy Engine for action <code>{{ action.id }}</code> against {{ action.policy_id|default('Policy not supplied') }}.
             </p>
             <div class="violation-row" style="margin-bottom: 0.75rem;">
                 <div>
@@ -266,9 +266,9 @@
             <div class="violation-row">
                 <div>
                     <span class="badge badge-critical">L2 Semantic Gate</span>
-                    <strong style="margin-left: 0.5rem; font-size: 0.825rem;">Mass Deletion Threshold Exceeded (SEC-FS-04)</strong>
+                    <strong style="margin-left: 0.5rem; font-size: 0.825rem;">{{ action.policy_id|default('Policy check') }}</strong>
                     <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">
-                        Operations proposing bulk unlinking of >3 files require explicit operator review.
+                        {{ action.policy_reason }}
                     </div>
                 </div>
                 <span class="badge badge-critical">Escalated</span>

@@ -81,6 +81,36 @@ class Settings(BaseSettings):
         ),
         description="Override container image (empty string uses registry default).",
     )
+    clef_account_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("CLOUDFLARE_ACCOUNT_ID", "CLEF_ACCOUNT_ID", "clef_account_id"),
+        description="Cloudflare account ID for Workers AI Clef endpoint.",
+    )
+    clef_api_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CLOUDFLARE_API_TOKEN", "CLEF_API_TOKEN", "clef_api_token"),
+        description="Cloudflare API token for Workers AI.",
+    )
+    clef_model: str = Field(
+        default="@cf/cloudflare/clef-flash",
+        validation_alias=AliasChoices("CLEF_MODEL", "clef_model"),
+        description="Workers AI model id (@cf/cloudflare/clef-flash or @cf/cloudflare/clef).",
+    )
+    clef_timeout_s: float = Field(
+        default=8.0,
+        validation_alias=AliasChoices("CLEF_TIMEOUT_S", "clef_timeout_s"),
+        description="Workers AI request timeout in seconds (fail closed on expiry).",
+    )
+    gate_deny_threshold: float = Field(
+        default=0.85,
+        validation_alias=AliasChoices("GATE_DENY_THRESHOLD", "gate_deny_threshold"),
+        description="Score >= this denies (L1/L2).",
+    )
+    gate_clean_threshold: float = Field(
+        default=0.20,
+        validation_alias=AliasChoices("GATE_CLEAN_THRESHOLD", "gate_clean_threshold"),
+        description="Score <= this is clean; between clean and deny escalates to HITL.",
+    )
 
     @field_validator("sandbox_workspace")
     @classmethod

@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}WAL & Audit Log — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">WAL & Audit Log</h1>
+            {% if demo_mode %}
+                <span class="storage-mode-pill demo" title="Running in illustrative demo mode. Underlying PostgreSQL write-ahead audit table is disconnected.">
+                    <span class="mode-dot"></span> DEMO JOURNAL
+                </span>
+            {% else %}
+                <span class="storage-mode-pill live" title="Connected to PostgreSQL append-only write-ahead journal">
+                    <span class="mode-dot"></span> POSTGRES PERSISTENT
+                </span>
+            {% endif %}
+        </div>
+        <p class="page-subtitle">
+            Immutable application-level append-only event journal · tamper-evident action provenance & cryptographic verification
+        </p>
+    </div>
+
+    <!-- Header Quick Actions -->
+    <div class="audit-header-actions">
+        <!-- Manual Refresh Button -->
+        <button
+            class="btn-icon-toggle audit-btn"
+            hx-get="/audit"
+            hx-target="#audit-table-container"
+            hx-swap="innerHTML"
+            title="Refresh event records"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+        </button>
+
+        <!-- CSV Export Button with Formula Injection Protection -->
+        <a
+            id="btn-export-csv"
+            href="/audit/export"
+            class="btn-icon-toggle audit-btn btn-export"
+            title="Export filtered records to sanitized CSV"
+            download
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Export CSV
+        </a>
+    </div>
+</div>
+
+<!-- Row 1: Summary KPI Metrics Grid (Derived from actual event records) -->
+<div class="audit-kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TOTAL JOURNAL EVENTS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.total }}</div>
+        <div class="kpi-meta">Append-only journal entries</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">ACTION PROPOSALS</span>
+            <div class="kpi-icon-wrap" style="color: #A855F7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: #A855F7;">{{ metrics.proposals }}</div>
+        <div class="kpi-meta">Write-ahead intent locks</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">POLICY DECISIONS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.policy_decisions }}</div>
+        <div class="kpi-meta">L1/L2 and Lease evaluations</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">APPROVAL DECISIONS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-amber);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-amber);">{{ metrics.approval_decisions }}</div>
+        <div class="kpi-meta">Human-in-the-loop triage</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">EXECUTION EVENTS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-emerald);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-emerald);">{{ metrics.execution_events }}</div>
+        <div class="kpi-meta">Dispatched sandbox executions</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">FAILED OPERATIONS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-ruby);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-ruby);">{{ metrics.failed_operations }}</div>
+        <div class="kpi-meta">Policy denials & execution errors</div>
+    </div>
+</div>
+
+<!-- Row 2: Search, Filters & Quick Scopes -->
+<div class="audit-filter-panel">
+    <form
+        id="audit-filter-form"
+        hx-get="/audit"
+        hx-target="#audit-table-container"
+        hx-swap="innerHTML"
+        hx-trigger="submit, change from:select, keyup changed delay:300ms from:#audit-search-input"
+        onsubmit="updateExportUrl();"
+    >
+        <div class="filter-row">
+            <!-- Free text search -->
+            <div class="filter-group search-group" style="flex: 2; min-width: 220px;">
+                <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input
+                    id="audit-search-input"
+                    type="text"
+                    name="q"
+                    value="{{ q }}"
+                    class="filter-input search-input"
+                    placeholder="Search payload, description, hash, actor, or ID..."
+                    autocomplete="off"
+                >
+            </div>
+
+            <!-- Event Kind filter -->
+            <div class="filter-group" style="flex: 1; min-width: 170px;">
+                <label class="filter-label">Event Kind</label>
+                <select name="kind" class="filter-select">
+                    <option value="all" {% if selected_kind == 'all' %}selected{% endif %}>All Event Types</option>
+                    {% for k in available_kinds %}
+                        <option value="{{ k }}" {% if selected_kind == k %}selected{% endif %}>{{ k }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Actor filter -->
+            <div class="filter-group" style="flex: 1; min-width: 150px;">
+                <label class="filter-label">Actor / Agent</label>
+                <select name="actor" class="filter-select">
+                    <option value="all" {% if selected_actor == 'all' %}selected{% endif %}>All Actors</option>
+                    {% for a in available_actors %}
+                        <option value="{{ a }}" {% if selected_actor == a %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Action ID filter -->
+            <div class="filter-group" style="flex: 1; min-width: 140px;">
+                <label class="filter-label">Action ID</label>
+                <input
+                    type="text"
+                    name="action_id"
+                    value="{{ action_id }}"
+                    class="filter-input"
+                    placeholder="e.g. act_7129e3"
+                    autocomplete="off"
+                >
+            </div>
+
+            <!-- Run ID filter -->
+            <div class="filter-group" style="flex: 1; min-width: 140px;">
+                <label class="filter-label">Run ID</label>
+                <input
+                    type="text"
+                    name="run_id"
+                    value="{{ run_id }}"
+                    class="filter-input"
+                    placeholder="e.g. run_agent_419"
+                    autocomplete="off"
+                >
+            </div>
+
+            <!-- Clear Filters Button -->
+            <div class="filter-actions">
+                <a
+                    href="/audit"
+                    class="btn-clear-filters"
+                    hx-get="/audit"
+                    hx-target="#audit-table-container"
+                    hx-swap="innerHTML"
+                    onclick="document.getElementById('audit-filter-form').reset();"
+                    title="Reset all filters to defaults"
+                >
+                    Clear Filters
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Row 3: Event Table Container (HTMX Target for live updates) -->
+<div id="audit-table-container">
+    {% include "components/audit_table_fragment.html" %}
+</div>
+
+<!-- Slide-Over Event Detail Drawer Container & Backdrop -->
+<div id="event-detail-backdrop" class="drawer-backdrop" onclick="this.classList.remove('active');">
+    <div id="event-detail-drawer" class="drawer-panel" onclick="event.stopPropagation();">
+        <!-- Rendered asynchronously by /audit/events/{id} via HTMX -->
+        <div class="drawer-placeholder">
+            <div class="spinner"></div>
+            <span>Loading event details...</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Dynamically synchronize the Export CSV URL with the current filter inputs
+    function updateExportUrl() {
+        const form = document.getElementById('audit-filter-form');
+        if (!form) return;
+        const formData = new FormData(form);
+        const params = new URLSearchParams(formData);
+        const exportBtn = document.getElementById('btn-export-csv');
+        if (exportBtn) {
+            exportBtn.href = '/audit/export?' + params.toString();
+        }
+    }
+
+    document.addEventListener('htmx:afterRequest', function() {
+        updateExportUrl();
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateExportUrl();
+    });
+
+    // Close detail drawer on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const backdrop = document.getElementById('event-detail-backdrop');
+            if (backdrop) backdrop.classList.remove('active');
+        }
+    });
+</script>
+{% endblock %}

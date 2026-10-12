@@ -1,0 +1,756 @@
+/* ==========================================================================
+   AEGIS GOVERNANCE CONSOLE — POLICIES, LEASES, TRACES & SANDBOX
+   Tactical Cybersecurity Styling (IBM Plex Mono / Dark Obsidian)
+   ========================================================================== */
+
+/* Tactical Filters & Search Controls */
+.audit-filter-panel,
+.audit-controls-panel {
+    background: var(--bg-surface, #101828);
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.11));
+    border-radius: 8px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.filter-row,
+.audit-filters-form {
+    display: flex;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.filter-group,
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.filter-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: var(--font-mono, monospace);
+}
+
+/* Custom Tactical Select Dropdowns */
+.filter-select,
+.tactical-select {
+    background-color: var(--bg-canvas, #090e17);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2306b6d4' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 14px;
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    padding: 0.52rem 2.2rem 0.52rem 0.85rem;
+    color: var(--text-primary, #f8fafc);
+    font-family: var(--font-sans, sans-serif);
+    font-size: 0.82rem;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    transition: all 0.15s ease;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+    min-width: 140px;
+}
+
+.filter-select:hover,
+.tactical-select:hover {
+    border-color: var(--color-cyan, #06b6d4);
+    background-color: var(--bg-surface-hover, #152238);
+}
+
+.filter-select:focus,
+.tactical-select:focus {
+    border-color: var(--color-cyan, #06b6d4);
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25);
+    background-color: var(--bg-surface-elevated, #16243c);
+}
+
+.filter-select option,
+.tactical-select option {
+    background-color: #0c121f;
+    color: #f8fafc;
+    padding: 0.6rem;
+}
+
+html[data-theme="light"] .filter-select option,
+html[data-theme="light"] .tactical-select option {
+    background-color: #ffffff;
+    color: #0f172a;
+}
+
+/* Custom Tactical Inputs & Search */
+.filter-input,
+.tactical-input {
+    background: var(--bg-canvas, #090e17);
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    padding: 0.52rem 0.85rem;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.82rem;
+    font-family: var(--font-sans, sans-serif);
+    outline: none;
+    transition: all 0.15s ease;
+    width: 100%;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.filter-input:focus,
+.tactical-input:focus {
+    border-color: var(--color-cyan, #06b6d4);
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25);
+    background: var(--bg-surface-elevated, #16243c);
+}
+
+.search-group,
+.filter-search-wrap,
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.search-group .search-icon,
+.filter-search-wrap .search-icon,
+.search-input-wrapper svg {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-cyan, #06b6d4);
+    pointer-events: none;
+}
+
+.search-group .search-input,
+.filter-search-wrap input,
+.search-input-wrapper input {
+    padding-left: 2.2rem;
+}
+
+/* Clear Filters Button */
+.filter-actions {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.1rem;
+}
+
+.btn-clear-filters,
+.btn-tactical.btn-clear {
+    color: var(--text-muted, #94a3b8);
+    font-size: 0.78rem;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.5rem 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
+    background: rgba(255, 255, 255, 0.04);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.btn-clear-filters:hover,
+.btn-tactical.btn-clear:hover {
+    color: var(--text-primary, #f8fafc);
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* Tactical Tables Common */
+.tactical-table-wrapper {
+    background: var(--bg-surface, #121824);
+    border: 1px solid var(--border-color, #1e293b);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.tactical-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    color: var(--text-secondary, #94a3b8);
+}
+
+.tactical-table thead th {
+    background: rgba(15, 23, 42, 0.75);
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-muted, #64748b);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-color, #1e293b);
+    text-align: left;
+}
+
+.tactical-table tbody tr {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    transition: background 0.15s ease;
+}
+
+.tactical-table tbody tr:hover {
+    background: rgba(6, 182, 212, 0.03);
+}
+
+.tactical-table td {
+    padding: 0.85rem 1rem;
+    vertical-align: middle;
+}
+
+/* ==========================================================================
+   1. POLICIES CONSOLE
+   ========================================================================== */
+.tier-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+}
+
+.tier-pill-l1 {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--color-cyan, #06b6d4);
+    border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.tier-pill-l2 {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.policy-id-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.version-tag {
+    font-size: 0.68rem;
+    color: var(--text-muted, #64748b);
+    font-family: var(--font-mono, monospace);
+}
+
+.policy-main-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.policy-title-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.policy-name {
+    font-weight: 600;
+    color: var(--text-primary, #f1f5f9);
+    font-size: 0.88rem;
+}
+
+.badge-category {
+    font-size: 0.68rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary, #94a3b8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.badge-risk-critical {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    background: rgba(239, 68, 68, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.badge-risk-high {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.badge-risk-med {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    background: rgba(59, 130, 246, 0.18);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.45);
+}
+
+.policy-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #94a3b8);
+    line-height: 1.4;
+}
+
+.policy-rule-syntax {
+    font-size: 0.72rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.policy-rule-syntax .syntax-label {
+    color: var(--text-muted, #64748b);
+}
+
+.policy-rule-syntax code {
+    background: rgba(0, 0, 0, 0.35);
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    font-family: var(--font-mono, monospace);
+}
+
+.policy-engine-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.engine-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--text-primary, #e2e8f0);
+}
+
+.target-pattern {
+    font-size: 0.7rem;
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0.2rem 0.45rem;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    display: inline-block;
+}
+
+.pattern-icon {
+    color: var(--color-cyan, #06b6d4);
+}
+
+.action-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    font-weight: 700;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    letter-spacing: 0.03em;
+}
+
+.pill-deny {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.pill-escalate {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.pill-allow {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 5px currentColor;
+}
+
+.policy-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+}
+
+.policy-toggle-btn.active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+.policy-toggle-btn.inactive {
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.policy-toggle-btn .status-indicator-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.policy-toggle-btn.active .status-indicator-dot {
+    box-shadow: 0 0 6px currentColor;
+}
+
+.row-inactive {
+    opacity: 0.55;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+/* ==========================================================================
+   2. EPHEMERAL LEASES CONSOLE
+   ========================================================================== */
+.lease-scope-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.73rem;
+    background: rgba(6, 182, 212, 0.12);
+    color: var(--color-cyan, #06b6d4);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.ttl-meter-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 140px;
+}
+
+.ttl-meter-bar {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+    overflow: hidden;
+}
+
+.ttl-meter-fill {
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+}
+
+.ttl-meter-fill.green {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.ttl-meter-fill.amber {
+    background: #f59e0b;
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.ttl-meter-fill.red {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.ttl-time-text {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.lease-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-family: var(--font-mono, monospace);
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+}
+
+.lease-status-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.lease-status-expired {
+    background: rgba(100, 116, 139, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.35);
+}
+
+.lease-status-revoked {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.btn-revoke-lease {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 0.3rem 0.65rem;
+    font-size: 0.73rem;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-revoke-lease:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: #ef4444;
+}
+
+/* ==========================================================================
+   3. EXECUTION TRACES CONSOLE
+   ========================================================================== */
+.thread-status-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.thread-running {
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--color-cyan, #06b6d4);
+    border: 1px solid rgba(6, 182, 212, 0.4);
+}
+
+.thread-parked {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    animation: pulseGlow 2s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.2); }
+    50% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.5); }
+}
+
+.thread-completed {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.thread-failed {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.node-chain-steps {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.step-node-pill {
+    font-size: 0.7rem;
+    font-family: var(--font-mono, monospace);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary, #cbd5e1);
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.step-node-pill.step-parked {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+}
+
+.step-node-pill.step-guard {
+    background: rgba(6, 182, 212, 0.12);
+    border-color: rgba(6, 182, 212, 0.35);
+    color: var(--color-cyan, #06b6d4);
+}
+
+.step-arrow {
+    color: var(--text-muted, #64748b);
+    font-size: 0.65rem;
+}
+
+/* ==========================================================================
+   4. SANDBOX RUNS CONSOLE
+   ========================================================================== */
+.sandbox-adapter-tag {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary, #e2e8f0);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.exit-code-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.18rem 0.5rem;
+    border-radius: 3px;
+}
+
+.exit-code-0 {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.exit-code-err {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.exit-code-timeout {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.resource-stat-group {
+    display: flex;
+    gap: 0.65rem;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+}
+
+.stat-item {
+    color: var(--text-muted, #94a3b8);
+}
+
+.stat-item span {
+    color: var(--text-primary, #f1f5f9);
+    font-weight: 600;
+}
+
+/* Tactical Terminal Drawer Modal */
+.terminal-window {
+    background: #090d16;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: var(--font-mono, monospace);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.terminal-header {
+    background: #0f172a;
+    padding: 0.5rem 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1e293b;
+}
+
+.terminal-title {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.terminal-dots {
+    display: flex;
+    gap: 5px;
+}
+
+.term-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.term-dot.red { background: #ef4444; }
+.term-dot.yellow { background: #f59e0b; }
+.term-dot.green { background: #10b981; }
+
+.terminal-body {
+    padding: 1rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: #22c55e;
+    max-height: 380px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.terminal-body .log-err {
+    color: #f87171;
+}
+
+.terminal-body .log-info {
+    color: #38bdf8;
+}
+
+.terminal-body .log-warn {
+    color: #fbbf24;
+}
+
+.terminal-body .log-dim {
+    color: #64748b;
+}

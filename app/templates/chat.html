@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Agent Chat — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">AI Agent Governance Chat</h1>
+            <span class="storage-mode-pill live" title="Direct interactive seam interception with active agents">
+                <span class="mode-dot"></span> LIVE SEAM INTERCEPTION
+            </span>
+            <span class="storage-mode-pill demo" title="Operations evaluated against L1/L2 policies in real time">
+                <span class="mode-dot"></span> HITL GATE CAPABLE
+            </span>
+        </div>
+        <p class="page-subtitle">
+            Directly interact with AI agents. All proposed tool actions cross the GuardedExecutor seam for real-time policy evaluation and 1-click approvals.
+        </p>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="audit-header-actions">
+        <form hx-post="/chat/reset" hx-target="#chat-messages-box" hx-swap="outerHTML">
+            <input type="hidden" name="agent_name" id="reset-agent-name" value="{{ active_agent.name }}">
+            <button
+                type="submit"
+                class="btn-icon-toggle audit-btn"
+                title="Start a new thread session"
+            >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                New Thread Session
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Main Chat Console Layout -->
+<div class="chat-console-wrapper">
+    <!-- Left Sidebar: Agent Selection & Scenario Starters -->
+    <aside class="chat-sidebar">
+        <!-- Agent Switcher -->
+        <div class="chat-sidebar-section">
+            <span class="chat-sidebar-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line></svg>
+                Select Target Agent
+            </span>
+            <div class="agent-selector-card">
+                <div class="agent-radio-group">
+                    {% for ag in agents %}
+                    <div
+                        class="agent-radio-option {% if ag.name == active_agent.name %}selected{% endif %}"
+                        onclick="switchAgent('{{ ag.name }}', '{{ ag.model }}', this);"
+                    >
+                        <div class="agent-opt-icon">
+                            {{ ag.name[:2]|upper }}
+                        </div>
+                        <div class="agent-opt-details">
+                            <span class="agent-opt-name">{{ ag.name }}</span>
+                            <span class="agent-opt-model">{{ ag.model }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Scenario Starters / Quick Prompts -->
+        <div class="chat-sidebar-section">
+            <span class="chat-sidebar-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                Governance Test Scenarios
+            </span>
+            <div class="quick-prompt-chips">
+                {% for qp in quick_prompts %}
+                <button
+                    class="prompt-chip-btn"
+                    onclick="applyPrompt('{{ qp.prompt }}');"
+                    title="Click to insert into chat prompt"
+                >
+                    <span class="prompt-chip-title">{{ qp.title }}</span>
+                    <span>{{ qp.prompt }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Seam Architecture Summary -->
+        <div class="chat-sidebar-section" style="margin-top: auto;">
+            <div style="background: rgba(6, 182, 212, 0.06); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 6px; padding: 0.75rem;">
+                <div style="font-size: 0.72rem; font-weight: 700; color: var(--color-cyan); margin-bottom: 0.35rem; font-family: var(--font-mono);">
+                    🛡 SEAM INTEGRATION
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.45;">
+                    Every proposed action is intercepted at the GuardedExecutor seam. High-risk calls trigger an interactive HITL Interception Gate.
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right Main Chat Panel -->
+    <main class="chat-main-panel">
+        <!-- Chat Topbar -->
+        <header class="chat-header-bar">
+            <div class="chat-active-agent-info">
+                <div class="agent-live-avatar" id="header-agent-avatar">
+                    {{ active_agent.name[:2]|upper }}
+                </div>
+                <div>
+                    <div class="agent-live-title" id="header-agent-name">{{ active_agent.name }}</div>
+                    <div class="agent-live-meta">
+                        <span id="header-agent-model">{{ active_agent.model }}</span>
+                        <span>•</span>
+                        <span class="pulse-dot" style="width: 5px; height: 5px;"></span>
+                        <span style="color: var(--color-emerald);">Seam Guard Active</span>
+                        <span>•</span>
+                        <span style="color: var(--text-muted);">Thread: {{ thread_id }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-header-actions">
+                <a href="/approvals" class="btn-icon-toggle audit-btn" style="font-size: 0.75rem; text-decoration: none;">
+                    Interception Queue →
+                </a>
+            </div>
+        </header>
+
+        <!-- Message Feed -->
+        {% include "components/chat_messages_list.html" %}
+
+        <!-- Input Bar -->
+        <footer class="chat-input-panel">
+            <form
+                id="chat-send-form"
+                class="chat-input-form"
+                hx-post="/chat/message"
+                hx-target="#chat-messages-box"
+                hx-swap="outerHTML"
+                hx-indicator="#chat-loading-spinner"
+                onsubmit="handleChatSubmit();"
+            >
+                <input type="hidden" name="agent_name" id="form-agent-name" value="{{ active_agent.name }}">
+                <input type="hidden" name="thread_id" id="form-thread-id" value="{{ thread_id }}">
+
+                <textarea
+                    id="chat-user-input"
+                    name="message"
+                    class="chat-textarea"
+                    rows="2"
+                    placeholder="Message the agent or instruct an operation (e.g. 'Delete temporary files in /workspace/tmp/')... [Enter to send]"
+                    required
+                ></textarea>
+
+                <button type="submit" class="btn-send-chat" id="btn-submit-chat">
+                    <span id="chat-loading-spinner" class="htmx-indicator">
+                        <svg class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 10 10"></path></svg>
+                    </span>
+                    <span>Send</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </form>
+        </footer>
+    </main>
+</div>
+
+<!-- Interactive Client Scripts for Agent Switching and Keyboard Sending -->
+<script>
+function switchAgent(name, model, element) {
+    document.querySelectorAll('.agent-radio-option').forEach(el => el.classList.remove('selected'));
+    element.classList.add('selected');
+
+    document.getElementById('header-agent-name').textContent = name;
+    document.getElementById('header-agent-model').textContent = model;
+    document.getElementById('header-agent-avatar').textContent = name.substring(0, 2).toUpperCase();
+    document.getElementById('form-agent-name').value = name;
+    document.getElementById('reset-agent-name').value = name;
+}
+
+function applyPrompt(text) {
+    const input = document.getElementById('chat-user-input');
+    input.value = text;
+    input.focus();
+}
+
+function handleChatSubmit() {
+    const input = document.getElementById('chat-user-input');
+    setTimeout(() => {
+        input.value = '';
+    }, 50);
+}
+
+// Enter to send, Shift+Enter for newline
+document.getElementById('chat-user-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('chat-send-form').requestSubmit();
+    }
+});
+</script>
+{% endblock %}

@@ -254,3 +254,31 @@ def test_proof_5_no_leftovers() -> None:
     assert (
         containers == []
     ), f"Lingering warden container(s) detected after test suite: {containers}"
+
+
+@pytest.mark.asyncio
+async def test_proof_6_runs_on_ambient_event_loop(workspace: Path) -> None:
+    """Proof 6 (regression): DockerSandbox works on the ambient test loop.
+
+    The production path runs under WindowsSelectorEventLoopPolicy (forced by
+    warden.config for psycopg), where asyncio.create_subprocess_exec raises
+    NotImplementedError. The adapter must not depend on loop subprocess
+    support, so awaiting run() directly here — no explicit Proactor loop —
+    must succeed against the real daemon.
+    """
+    sandbox = DockerSandbox(workspace_path=workspace)
+    action = Action(
+        id="proof6-ambient-loop",
+        kind=ActionKind.TOOL,
+        name="shell",
+        payload={"command": "echo hello-ambient"},
+        run_id="run-ambient-6",
+        thread_id="th-ambient-6",
+    )
+
+    result: SandboxResult = await sandbox.run(action)
+
+    assert result.ok is True
+    assert result.exit_code == 0
+    assert "hello-ambient" in result.stdout
+    assert result.timed_out is False

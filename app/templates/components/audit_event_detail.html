@@ -1,0 +1,136 @@
+<div class="drawer-header">
+    <div class="drawer-title-group">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span class="badge {{ event.badge_class }}">{{ event.kind }}</span>
+            <code class="drawer-event-id">{{ event.id }}</code>
+        </div>
+        <div class="drawer-timestamp">Logged at {{ event.formatted_ts }}</div>
+    </div>
+    <button class="btn-close-drawer" onclick="document.getElementById('event-detail-backdrop').classList.remove('active');" title="Close detail view">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+</div>
+
+<div class="drawer-body">
+    <!-- Section 1: Provenance Metadata Grid -->
+    <div class="detail-section">
+        <h3 class="section-title">Provenance & Action Identity</h3>
+        <div class="metadata-grid">
+            <div class="meta-item">
+                <span class="meta-label">Actor / Agent</span>
+                <span class="meta-value highlight">{{ event.actor }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Lifecycle Status</span>
+                <span class="meta-value">
+                    <span class="status-indicator status-{{ event.status|lower }}">{{ event.status }}</span>
+                </span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Action Reference</span>
+                <span class="meta-value">
+                    {% if event.action_id %}
+                        <a href="/actions/{{ event.action_id }}" class="action-link" style="font-family: var(--font-mono); font-size: 0.85rem;">{{ event.action_id }} &rarr;</a>
+                    {% else %}
+                        <span class="text-muted">None (System / Checkpoint)</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Checkpoint Step</span>
+                <span class="meta-value" style="font-family: var(--font-mono);">
+                    {% if event.checkpoint_step is not none %}Step #{{ event.checkpoint_step }}{% else %}&mdash;{% endif %}
+                </span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Run ID</span>
+                <code class="meta-value-code">{{ event.run_id }}</code>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Thread ID</span>
+                <code class="meta-value-code">{{ event.thread_id }}</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Cryptographic Hash Chain -->
+    <div class="detail-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 class="section-title" style="margin-bottom: 0;">Cryptographic Hash Chain</h3>
+            <span class="verify-badge {{ 'verified' if event.verification_status == 'Verified' else ('failed' if event.verification_status == 'Verification failed' else 'unavailable') }}">
+                {{ event.verification_status }}
+            </span>
+        </div>
+
+        <div class="hash-box">
+            <div class="hash-field">
+                <span class="hash-label">Current Event SHA-256 Digest:</span>
+                <div class="hash-value-wrap">
+                    <code>{{ event.event_hash or 'None' }}</code>
+                    {% if event.event_hash %}
+                    <button class="btn-copy-hash" onclick="navigator.clipboard.writeText('{{ event.event_hash }}'); this.innerText='Copied!';" title="Copy SHA-256 hash">Copy</button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="hash-field" style="margin-top: 0.6rem;">
+                <span class="hash-label">Previous Event Hash (Link):</span>
+                <div class="hash-value-wrap">
+                    <code>{{ event.prev_hash or '0000000000000000000000000000000000000000000000000000000000000000 (Genesis)' }}</code>
+                </div>
+            </div>
+        </div>
+        <p class="hash-footnote">
+            {% if demo_mode %}
+                <span style="color: var(--color-amber);">Demo Storage Mode:</span> Real-time cryptographic ledger table integration point with PostgreSQL write-ahead audit table (Yashit/Gourav).
+            {% else %}
+                Hardware-backed cryptographic hash chaining active. Tamper-evident ledger.
+            {% endif %}
+        </p>
+    </div>
+
+    <!-- Section 3: Event Payload (Safe JSON Display) -->
+    <div class="detail-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <h3 class="section-title" style="margin-bottom: 0;">Payload (Untrusted Domain Content)</h3>
+            <button class="btn-copy-hash" onclick="navigator.clipboard.writeText(document.getElementById('payload-code-block').innerText); this.innerText='Copied!';" style="font-size: 0.72rem;">Copy JSON</button>
+        </div>
+        <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+            Rendered safely as text — HTML interpretation disabled to prevent XSS.
+        </p>
+        <pre class="payload-pre"><code id="payload-code-block">{{ event.payload_json }}</code></pre>
+    </div>
+
+    <!-- Section 4: Related Lifecycle Events -->
+    <div class="detail-section">
+        <h3 class="section-title">Related Lifecycle Events for this Context</h3>
+        {% if related_events %}
+            <div class="related-events-list">
+                {% for r in related_events %}
+                    <div
+                        class="related-event-card"
+                        hx-get="/audit/events/{{ r.id }}"
+                        hx-target="#event-detail-drawer"
+                        hx-swap="innerHTML"
+                        style="cursor: pointer;"
+                        title="Click to view this event"
+                    >
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                            <span class="badge {{ r.badge_class }}" style="font-size: 0.68rem; padding: 0.15rem 0.4rem;">{{ r.kind }}</span>
+                            <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">{{ r.formatted_ts }}</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-primary); font-weight: 500;">{{ r.description }}</div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 0.35rem; font-size: 0.7rem; color: var(--text-secondary); font-family: var(--font-mono);">
+                            <span>ID: {{ r.id }}</span>
+                            <span>&bull;</span>
+                            <span>Actor: {{ r.actor }}</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">
+                No other events recorded for action <code>{{ event.action_id or event.run_id }}</code>.
+            </p>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Execution Traces — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="audit-page-header">
+    <div>
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem;">
+            <h1 class="page-title" style="margin-bottom: 0;">Execution Traces</h1>
+            <span class="storage-mode-pill live" title="PostgreSQL-backed checkpoint persistence using LangGraph AsyncPostgresSaver">
+                <span class="mode-dot"></span> POSTGRES SAVER (LOCK 2)
+            </span>
+            <span class="storage-mode-pill demo" title="Live graph node transitions and checkpoint diff inspection">
+                <span class="mode-dot"></span> LANGGRAPH 0.2
+            </span>
+        </div>
+        <p class="page-subtitle">
+            Inspection of multi-node agent workflows, checkpoint steps, thread state snapshots, and human-in-the-loop park points.
+        </p>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="audit-header-actions">
+        <button
+            class="btn-icon-toggle audit-btn"
+            hx-get="/traces"
+            hx-include="#traces-filter-form"
+            hx-target="#traces-table-container"
+            hx-swap="innerHTML"
+            title="Refresh execution traces"
+        >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- KPI Metrics Grid -->
+<div class="audit-kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">TOTAL THREADS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value">{{ metrics.total_threads }}</div>
+        <div class="kpi-caption">Active & completed runs</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">PARKED AT GATE</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-amber);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-amber);">{{ metrics.parked_count }}</div>
+        <div class="kpi-caption">Awaiting HITL decision</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">RUNNING IN SANDBOX</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-cyan);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-cyan);">{{ metrics.running_count }}</div>
+        <div class="kpi-caption">Active execution node</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">COMPLETED RUNS</span>
+            <div class="kpi-icon-wrap" style="color: var(--color-emerald);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: var(--color-emerald);">{{ metrics.completed_count }}</div>
+        <div class="kpi-caption">Clean final checkpoints</div>
+    </div>
+
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <span class="kpi-label">AVG WORKFLOW LATENCY</span>
+            <div class="kpi-icon-wrap" style="color: #a855f7;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+        </div>
+        <div class="kpi-value" style="color: #c084fc;">{{ metrics.avg_latency }} ms</div>
+        <div class="kpi-caption">Mean graph traversal time</div>
+    </div>
+</div>
+
+<!-- Filter Controls Bar -->
+<div class="audit-filter-panel">
+    <form
+        id="traces-filter-form"
+        class="filter-row"
+        hx-get="/traces"
+        hx-target="#traces-table-container"
+        hx-swap="innerHTML"
+        hx-trigger="change, keyup delay:300ms from:#trace-search-input"
+    >
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Thread Status</label>
+            <select name="status" class="filter-select">
+                <option value="all" {% if selected_status == 'all' %}selected{% endif %}>All Statuses</option>
+                <option value="PARKED_HITL" {% if selected_status == 'PARKED_HITL' %}selected{% endif %}>Parked (HITL Pending)</option>
+                <option value="RUNNING" {% if selected_status == 'RUNNING' %}selected{% endif %}>Running</option>
+                <option value="COMPLETED" {% if selected_status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+                <option value="FAILED" {% if selected_status == 'FAILED' %}selected{% endif %}>Failed / Blocked</option>
+            </select>
+        </div>
+
+        <div class="filter-group" style="flex: 1; min-width: 170px;">
+            <label class="filter-label">Agent Model</label>
+            <select name="agent" class="filter-select">
+                <option value="all" {% if selected_agent == 'all' %}selected{% endif %}>All Agents</option>
+                <option value="CodeAgent" {% if selected_agent == 'CodeAgent' %}selected{% endif %}>CodeAgent</option>
+                <option value="DBAgent" {% if selected_agent == 'DBAgent' %}selected{% endif %}>DBAgent</option>
+                <option value="OpsAssistant" {% if selected_agent == 'OpsAssistant' %}selected{% endif %}>OpsAssistant</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group" style="flex: 2; min-width: 240px;">
+            <label class="filter-label">Search Traces</label>
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input
+                id="trace-search-input"
+                type="text"
+                name="q"
+                class="filter-input search-input"
+                placeholder="Search by Thread ID, Run ID, prompt, or checkpoint..."
+                value="{{ q }}"
+                autocomplete="off"
+            >
+        </div>
+
+        <div class="filter-actions">
+            <a href="/traces" class="btn-clear-filters">Clear Filters</a>
+        </div>
+    </form>
+</div>
+
+<!-- Traces Table Container -->
+<div id="traces-table-container">
+    {% include "components/traces_table_fragment.html" %}
+</div>
+
+<!-- Modal: Trace Step & State Inspector -->
+<dialog id="trace-detail-modal" style="background: var(--bg-surface, #121824); border: 1px solid var(--border-color, #1e293b); border-radius: 8px; color: var(--text-primary); max-width: 680px; width: 90%; padding: 1.5rem; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+        <h3 style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            Execution Trace & Checkpoint Inspector
+        </h3>
+        <button onclick="document.getElementById('trace-detail-modal').close();" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem;">✕</button>
+    </div>
+
+    <div id="trace-modal-body">
+        <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Loading trace state...
+        </div>
+    </div>
+</dialog>
+
+<!-- Architecture Callout -->
+<div class="policy-footer-note" style="margin-top: 2rem; padding: 1.25rem; background: var(--bg-surface-elevated, #161c28); border-radius: 8px; border: 1px solid var(--border-color, #222d3d);">
+    <div style="display: flex; gap: 1rem; align-items: flex-start;">
+        <div style="color: var(--color-cyan); padding-top: 0.2rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+        </div>
+        <div>
+            <h4 style="margin: 0 0 0.35rem 0; font-size: 0.92rem; color: var(--text-primary); font-family: var(--font-sans);">
+                LangGraph HITL Checkpoint Re-entry Seam (Lock 2)
+            </h4>
+            <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55;">
+                In accordance with <code>DATA_MODEL.md</code> and <code>ARCHITECTURE.md</code>, when a policy returns <code>escalate</code>, the GuardedExecutor emits a <code>gate_requested</code> event and returns <code>Pending</code>. The <code>run_gated()</code> helper parks the LangGraph thread via <code>interrupt()</code> into PostgreSQL.<br>
+                Upon human authorization from the Interception Gate, <code>Command(resume=decision)</code> re-enters the graph at the exact checkpoint step without re-executing previous steps.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
