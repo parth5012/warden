@@ -1,4 +1,4 @@
-"""Guarded LLM Client package for Warden.
+"""Guarded LLM Client package for Aegis.
 
 Provides token usage extraction, normalization, pricing, rate limiting,
 budget enforcement, and telemetry.
@@ -31,6 +31,8 @@ from warden.llm.types import (
     RetryableProviderError,
     TokenLimitExceededError,
     TokenUsageSource,
+    UnknownModelPricingError,
+    UnsupportedModelError,
 )
 
 __all__ = [
@@ -62,6 +64,8 @@ __all__ = [
     "TokenEstimator",
     "TokenLimitExceededError",
     "TokenUsageSource",
+    "UnknownModelPricingError",
+    "UnsupportedModelError",
     "UsageExtractor",
     "redact_secrets",
 ]

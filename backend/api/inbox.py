@@ -8,6 +8,8 @@ from fastapi import APIRouter, Form, Header, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+from warden.models import Denied, Error
+
 router = APIRouter(prefix="/inbox", tags=["Approvals Inbox"])
 
 
@@ -75,7 +77,52 @@ async def resolve_gate(
             },
         )
 
+    from backend.api.llm import is_pending_llm_gate, resolve_pending_llm_gate
+
+    is_llm_gate = is_pending_llm_gate(gate_id)
+    if is_llm_gate:
+        outcome = await resolve_pending_llm_gate(gate_id, dec, warden_key)
+        if isinstance(outcome, Error):
+            status_code = 403 if outcome.reason == "unauthorized_approver" else 503
+            return JSONResponse(
+                status_code=status_code,
+                content={"error": outcome.reason, "gate_id": gate_id},
+            )
+        if outcome is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
+            )
+        if isinstance(outcome, Denied) and dec == "approve":
+            if "expired" in outcome.reason.lower():
+                PENDING_GATES.pop(gate_id, None)
+                return JSONResponse(
+                    status_code=410,
+                    content={
+                        "error": "approval_expired",
+                        "detail": outcome.reason,
+                        "gate_id": gate_id,
+                    },
+                )
+            return JSONResponse(
+                status_code=403 if "Approval rejected" in outcome.reason else 409,
+                content={
+                    "error": "approval_rejected",
+                    "detail": outcome.reason,
+                    "gate_id": gate_id,
+                },
+            )
+
     gate = PENDING_GATES.pop(gate_id)
+
+    # If the gate belongs to an agent run, resume the execution graph
+    if gate.get("thread_id") and not is_llm_gate:
+        try:
+            from backend.api.runs import resume_run
+            await resume_run(gate["thread_id"], dec)
+        except Exception:
+            pass
+
     safe_dec = html.escape(dec)
     safe_gate_id = html.escape(gate_id)
     safe_action = html.escape(str(gate["action_name"]))
@@ -104,6 +151,10 @@ async def resolve_gate(
             "status": "resolved",
             "decision": dec,
             "action_name": gate["action_name"],
-            "approver": warden_key or "operator",
+            "approver": (
+                "authenticated operator"
+                if is_llm_gate
+                else warden_key or "operator"
+            ),
         }
     )

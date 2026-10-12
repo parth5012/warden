@@ -519,7 +519,7 @@ class InMemoryDemoJournal(AuditJournal, JournalRepository):
                     query in e.id.lower()
                     or query in (e.action_id or "").lower()
                     or query in e.run_id.lower()
-                    or query in e.actor.lower()
+                    or query in (e.actor or "").lower()
                     or query in e.description.lower()
                     or query in json.dumps(e.payload).lower()
                 )
@@ -538,7 +538,7 @@ class InMemoryDemoJournal(AuditJournal, JournalRepository):
 
         if actor and actor.lower() != "all":
             act = actor.strip().lower()
-            filtered = [e for e in filtered if act in e.actor.lower()]
+            filtered = [e for e in filtered if act in (e.actor or "").lower()]
 
         if actual_date_from:
             bound_from = actual_date_from.strip()
@@ -677,7 +677,7 @@ async def get_audit_page(
         ev_dict["formatted_ts"] = format_utc_ts(ev.ts)
         enriched_events.append(ev_dict)
 
-    available_actors = sorted(list({e.actor for e in JOURNAL_STORE._events}))
+    available_actors = sorted({e.actor or "" for e in JOURNAL_STORE._events})
     available_kinds = [k.value for k in EventKind]
 
     context = {

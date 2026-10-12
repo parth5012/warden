@@ -13,5 +13,3 @@ __pycache__/
 # Temp / local
 .tmp/
 .env
-
-

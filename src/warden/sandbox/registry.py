@@ -1,4 +1,4 @@
-"""Sandbox tool profile registry and seed configurations for Warden.
+"""Sandbox tool profile registry and seed configurations for Aegis.
 
 Defines the ToolProfile data structure and provides profile lookups
 for Phase-1 ops-assistant sandbox tools.

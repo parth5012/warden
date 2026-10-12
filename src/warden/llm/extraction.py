@@ -103,6 +103,21 @@ class UsageExtractor:
                 return usage
             if hasattr(usage, "model_dump"):
                 return usage.model_dump()  # type: ignore[no-any-return]
+            # Extract common attributes from object
+            obj_dict: dict[str, Any] = {}
+            for attr in (
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "prompt_tokens_details",
+                "completion_tokens_details",
+                "input_tokens",
+                "output_tokens",
+            ):
+                if hasattr(usage, attr):
+                    obj_dict[attr] = getattr(usage, attr)
+            if obj_dict:
+                return obj_dict
             if hasattr(usage, "__dict__"):
                 return dict(usage.__dict__)
 
@@ -145,23 +160,23 @@ class UsageExtractor:
 
         # Cached tokens extraction
         prompt_details = raw.get("prompt_tokens_details") or {}
-        if not isinstance(prompt_details, dict) and hasattr(prompt_details, "__dict__"):
-            prompt_details = prompt_details.__dict__
-        cached_tokens = int(
-            prompt_details.get("cached_tokens", 0)
-            if isinstance(prompt_details, dict)
-            else raw.get("cached_tokens", 0)
-        )
+        if isinstance(prompt_details, dict):
+            cached_val = prompt_details.get("cached_tokens", 0)
+        elif hasattr(prompt_details, "cached_tokens"):
+            cached_val = getattr(prompt_details, "cached_tokens", 0)
+        else:
+            cached_val = raw.get("cached_tokens", 0)
+        cached_tokens = int(cached_val or 0)
 
         # Reasoning tokens extraction
         comp_details = raw.get("completion_tokens_details") or {}
-        if not isinstance(comp_details, dict) and hasattr(comp_details, "__dict__"):
-            comp_details = comp_details.__dict__
-        reasoning_tokens = int(
-            comp_details.get("reasoning_tokens", 0)
-            if isinstance(comp_details, dict)
-            else raw.get("reasoning_tokens", 0)
-        )
+        if isinstance(comp_details, dict):
+            reasoning_val = comp_details.get("reasoning_tokens", 0)
+        elif hasattr(comp_details, "reasoning_tokens"):
+            reasoning_val = getattr(comp_details, "reasoning_tokens", 0)
+        else:
+            reasoning_val = raw.get("reasoning_tokens", 0)
+        reasoning_tokens = int(reasoning_val or 0)
 
         # Ensure mutually exclusive accounting:
         # Prompt tokens from OpenAI includes cached tokens

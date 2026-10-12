@@ -1,6 +1,6 @@
-# Warden — Documentation Index
+# Aegis — Documentation Index
 
-This directory contains shared architecture, API, data model, security, testing, and integration documents for the Warden project.
+This directory contains shared architecture, API, data model, security, testing, and integration documents for the Aegis project.
 
 **Start here if you are new to the project.** After reading this index, follow the recommended reading order below before touching any code.
 

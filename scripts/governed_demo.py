@@ -36,8 +36,9 @@ from app.audit import (  # noqa: E402
     calculate_event_hash,
     verify_hash_chain,
 )
-from warden.config import get_groq_llm, settings  # noqa: E402
+from warden.config import settings  # noqa: E402
 from warden.llm.client import GuardedLLMClient  # noqa: E402
+from warden.llm.providers import OpenAIProviderAdapter  # noqa: E402
 from warden.llm.types import LLMRequest  # noqa: E402
 from warden.models import (  # noqa: E402
     Action,
@@ -137,13 +138,14 @@ class GovernedRunner:
         tele = self._tele(agent)
         action = Action(
             id=f"act_{uuid.uuid4().hex[:10]}", kind=ActionKind.LLM,
-            name=settings.groq_model, payload={"model": settings.groq_model, "prompt": prompt},
+            name="gpt-4o",
+            payload={"model": "gpt-4o", "provider": "openai", "prompt": prompt},
             run_id=run_id, thread_id=thread_id,
         )
         self.journal.append(EventKind.ACTION_REQUESTED.value, run_id=run_id,
                             thread_id=thread_id, actor=agent, action_id=action.id,
                             status="Proposed", description=f"LLM call: {prompt[:80]}",
-                            payload={"model": settings.groq_model})
+                            payload={"model": "gpt-4o"})
         try:
             verdict = self.policy.evaluate(action.name, {"prompt": prompt})
         except Exception:
@@ -182,40 +184,52 @@ class GovernedRunner:
                             thread_id=thread_id, actor="LLMClient",
                             action_id=action.id, status="Succeeded",
                             description=f"LLM completed in {latency}ms",
-                            payload={"model": settings.groq_model, **usage})
+                            payload={"model": "gpt-4o", **usage})
         return Allowed(result=result_text)
 
     async def _invoke_llm(self, prompt: str) -> tuple[str, dict[str, int]]:
-        usage: dict[str, int] = {"prompt": 0, "completion": 0}
-        if self.llm_provider is not None:
-            raw = await self.llm_provider(LLMRequest(model=settings.groq_model, messages=[
-                {"role": "user", "content": prompt}], provider="groq"))
-            text = str(raw.get("content", raw)) if isinstance(raw, dict) else str(raw)
-            return text, usage
-        llm = get_groq_llm()
-        if llm is None:
-            return "Groq unavailable — stub draft", usage
-
-        async def provider(req: LLMRequest) -> Any:
-            text = " ".join(str(m.get("content", m)) for m in req.messages)
-            return await llm.ainvoke(text)
-
         captured: list[dict[str, Any]] = []
 
         async def sink(event: dict[str, Any]) -> None:
             captured.append(event)
 
-        client = GuardedLLMClient(provider_caller=provider, telemetry_sink=sink)
-        action = Action(id=f"act_{uuid.uuid4().hex[:10]}", kind=ActionKind.LLM,
-                        name=settings.groq_model,
-                        payload={"model": settings.groq_model, "provider": "groq",
-                                 "messages": [{"role": "user", "content": prompt}],
-                                 "max_tokens": 200},
-                        run_id="run_llm", thread_id="thr_llm")
+        provider_caller = self.llm_provider
+        if provider_caller is None:
+            async def provider_caller(request: LLMRequest) -> Any:
+                adapter = OpenAIProviderAdapter.from_settings(
+                    request_timeout_s=request.timeout_s
+                )
+                return await adapter.invoke(request)
+
+        client = GuardedLLMClient(
+            provider_caller=provider_caller,
+            telemetry_sink=sink,
+        )
+        action = Action(
+            id=f"act_{uuid.uuid4().hex[:10]}",
+            kind=ActionKind.LLM,
+            name="gpt-4o",
+            payload={
+                "model": "gpt-4o",
+                "provider": "openai",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+            },
+            run_id="run_llm",
+            thread_id="thr_llm",
+        )
         res = await client.invoke(action)
         if captured:
-            usage = {"prompt": int(captured[0].get("prompt_tokens", 0)),
-                     "completion": int(captured[0].get("output_standard_tokens", 0))}
+            usage = {
+                "prompt": int(captured[0].get("prompt_tokens") or 0),
+                "completion": int(
+                    captured[0].get("completion_tokens")
+                    or captured[0].get("output_standard_tokens")
+                    or 0
+                ),
+            }
+        else:
+            usage = {"prompt": 0, "completion": 0}
         return str(res.result), usage
 
     async def run_tool(self, *, agent: str, run_id: str, thread_id: str,

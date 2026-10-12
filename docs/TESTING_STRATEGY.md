@@ -1,4 +1,4 @@
-# Warden — Testing Strategy
+# Aegis — Testing Strategy
 
 > Test inventory, acceptance criteria, fixture conventions, and the 18 required security scenarios.
 
