@@ -76,7 +76,8 @@
                 {% for qp in quick_prompts %}
                 <button
                     class="prompt-chip-btn"
-                    onclick="applyPrompt('{{ qp.prompt }}');"
+                    data-prompt="{{ qp.prompt|e }}"
+                    onclick="applyPrompt(this.dataset.prompt);"
                     title="Click to insert into chat prompt"
                 >
                     <span class="prompt-chip-title">{{ qp.title }}</span>
@@ -107,7 +108,7 @@
                 <div class="agent-live-avatar avatar-sm" id="header-agent-avatar">{{ active_agent.name[:2]|upper }}</div>
                 <div>
                     <div class="agent-live-title title-sm" id="header-agent-name">{{ active_agent.name }}</div>
-                    <div class="agent-live-meta"><span id="header-agent-model">{{ active_agent.model }}</span><span>•</span><span style="color: var(--text-muted);">Thread: {{ thread_id }}</span></div>
+                    <div class="agent-live-meta"><span id="header-agent-model">{{ active_agent.model }}</span><span>•</span><span style="color: var(--text-muted);" id="header-thread-id">Thread: {{ thread_id }}</span></div>
                 </div>
                 <span class="guard-inline"><span class="pulse-dot" style="width: 6px; height: 6px;"></span>Seam Guard Active</span>
             </div>
@@ -128,7 +129,7 @@
                 hx-target="#chat-messages-box"
                 hx-swap="outerHTML"
                 hx-indicator="#chat-loading-spinner"
-                onsubmit="handleChatSubmit();"
+                hx-on::after-request="if(event.detail.successful) document.getElementById('chat-user-input').value='';"
             >
                 <input type="hidden" name="agent_name" id="form-agent-name" value="{{ active_agent.name }}">
                 <input type="hidden" name="thread_id" id="form-thread-id" value="{{ thread_id }}">
@@ -186,13 +187,6 @@ function applyPrompt(text) {
     const input = document.getElementById('chat-user-input');
     input.value = text;
     input.focus();
-}
-
-function handleChatSubmit() {
-    const input = document.getElementById('chat-user-input');
-    setTimeout(() => {
-        input.value = '';
-    }, 50);
 }
 
 // Enter to send, Shift+Enter for newline

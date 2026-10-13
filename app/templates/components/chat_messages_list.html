@@ -3,6 +3,17 @@
         {% include "components/chat_message.html" %}
     {% endfor %}
 
+    <!-- Out-of-band thread sync: keeps the composer + header on the thread
+         this fragment was rendered for (matters after /chat/reset mints a
+         new thread id; harmless no-op otherwise). Hidden wrapper so a full
+         page load doesn't render these helpers inline; HTMX still applies
+         the OOB swaps. innerHTML on the label preserves the header's own
+         styling. -->
+    <span style="display:none;" aria-hidden="true">
+        <input type="hidden" name="thread_id" id="form-thread-id" value="{{ thread_id }}" hx-swap-oob="outerHTML">
+        <span id="header-thread-id" hx-swap-oob="innerHTML">Thread: {{ thread_id }}</span>
+    </span>
+
     <!-- Auto-scroll trigger on content swap -->
     <script>
         (function() {

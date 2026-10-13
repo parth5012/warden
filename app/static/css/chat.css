@@ -248,6 +248,7 @@
 
 .chat-message-row.agent {
     align-self: flex-start;
+    max-width: min(90%, 680px);
 }
 
 .msg-avatar {
@@ -279,6 +280,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .msg-meta-header {
@@ -497,10 +500,17 @@
     display: flex;
     gap: 0.65rem;
     align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.grant-form-block {
+    flex: 1 1 100%;
+    min-width: 0;
 }
 
 .chat-textarea {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 200px;
     background: var(--bg-canvas, #090e17);
     border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
     border-radius: 6px;
@@ -534,6 +544,7 @@
     font-size: 0.82rem;
     font-family: var(--font-mono, monospace);
     transition: all 0.15s ease;
+    flex: 0 0 auto;
 }
 
 .btn-send-chat:hover {
@@ -571,13 +582,13 @@
 .exhibit-proposal-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0.8rem; background: rgba(245, 158, 11, 0.14); border-bottom: 1px solid var(--color-amber-border); font-family: var(--font-mono); }
 .exhibit-tool { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-amber-text); font-weight: 700; font-size: 0.75rem; }
 .exhibit-action-id { color: var(--text-muted); font-size: 0.68rem; white-space: nowrap; }
-.exhibit-args { margin: 0; padding: 0.65rem 0.8rem; font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5; color: var(--text-primary); background: var(--bg-diff-canvas); max-height: 180px; overflow: auto; white-space: pre; }
+.exhibit-args { margin: 0; padding: 0.65rem 0.8rem; font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5; color: var(--text-primary); background: var(--bg-diff-canvas); max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .exhibit-stamp { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; padding: 0.55rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-card); }
 .exhibit-stamp.deny { color: var(--color-ruby-text); border-color: var(--color-ruby-border); background: var(--color-ruby-bg); flex-wrap: wrap; }
 .exhibit-stamp.gate { color: var(--color-amber-text); border-color: var(--color-amber-border); background: var(--color-amber-bg); flex-wrap: wrap; }
 .exhibit-stamp.ok { color: var(--color-emerald-text); border-color: var(--color-emerald-border); background: var(--color-emerald-bg); }
 .exhibit-gate-reason { flex-basis: 100%; font-family: var(--font-sans); font-size: 0.78rem; font-weight: 400; letter-spacing: normal; text-transform: none; color: var(--text-secondary); }
-.exhibit-gate-actions { display: flex; gap: 0.6rem; flex-basis: 100%; }
+.exhibit-gate-actions { display: flex; gap: 0.6rem; flex-basis: 100%; flex-wrap: wrap; }
 .exhibit-approve { background: var(--color-emerald); color: #fff; font-weight: 700; font-family: var(--font-mono); font-size: 0.75rem; padding: 0.42rem 0.85rem; border-radius: 4px; border: none; cursor: pointer; }
 .exhibit-approve:hover { filter: brightness(1.08); }
 .exhibit-denybtn { background: transparent; color: var(--color-ruby-text); border: 1px solid var(--color-ruby-border); font-weight: 600; font-family: var(--font-mono); font-size: 0.75rem; padding: 0.42rem 0.85rem; border-radius: 4px; cursor: pointer; }

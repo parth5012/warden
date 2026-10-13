@@ -23,7 +23,8 @@
         </dl>
         <p>Prompt contents and credentials are not displayed here.</p>
         <form hx-post="/inbox/{{ gate.id }}/resolve" hx-target="#gate-result-{{ loop.index }}"
-              hx-swap="innerHTML">
+              hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) this.querySelectorAll('button').forEach(b=>b.disabled=true);">
             <label for="approver-key-{{ loop.index }}">Approver key</label>
             <input id="approver-key-{{ loop.index }}" name="approver_key" type="password"
                    autocomplete="off" required>

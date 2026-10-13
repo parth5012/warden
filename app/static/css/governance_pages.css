@@ -174,8 +174,10 @@ html[data-theme="light"] .tactical-select option {
     background: var(--bg-surface, #121824);
     border: 1px solid var(--border-color, #1e293b);
     border-radius: 8px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    max-width: 100%;
 }
 
 .tactical-table {
@@ -183,6 +185,20 @@ html[data-theme="light"] .tactical-select option {
     border-collapse: collapse;
     font-size: 0.82rem;
     color: var(--text-secondary, #94a3b8);
+}
+
+/* Floor widths so fixed columns keep their size and the wrapper scrolls
+   horizontally instead of squeezing content into unreadability. */
+.policies-table {
+    min-width: 980px;
+}
+
+.leases-table {
+    min-width: 1000px;
+}
+
+.traces-table {
+    min-width: 980px;
 }
 
 .tactical-table thead th {
@@ -631,6 +647,33 @@ html[data-theme="light"] .tactical-select option {
 /* ==========================================================================
    4. SANDBOX RUNS CONSOLE
    ========================================================================== */
+.sandbox-table {
+    min-width: 1140px;
+}
+
+/* Payload column: floored so long unbroken tokens (JSON dumps, emails)
+   can't collapse it to a one-token-wide strip; the code box itself is
+   height-capped with its own scroll so tall payloads don't stretch rows. */
+.sandbox-payload-cell {
+    min-width: 240px;
+    max-width: 420px;
+}
+
+.sandbox-payload-code {
+    display: block;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.76rem;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 120px;
+    overflow: auto;
+}
+
 .sandbox-adapter-tag {
     font-family: var(--font-mono, monospace);
     font-size: 0.72rem;

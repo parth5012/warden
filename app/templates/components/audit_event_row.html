@@ -10,7 +10,7 @@
     </td>
     <td class="col-action">
         {% if ev.action_id %}
-            <a href="/actions/{{ ev.action_id }}" class="action-link" title="View Blast Radius">{{ ev.action_id }}</a>
+            <code class="audit-code-pill" title="{{ ev.action_id }}">{{ ev.action_id }}</code>
         {% else %}
             <span class="text-muted">—</span>
         {% endif %}

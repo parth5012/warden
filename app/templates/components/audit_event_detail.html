@@ -30,7 +30,7 @@
                 <span class="meta-label">Action Reference</span>
                 <span class="meta-value">
                     {% if event.action_id %}
-                        <a href="/actions/{{ event.action_id }}" class="action-link" style="font-family: var(--font-mono); font-size: 0.85rem;">{{ event.action_id }} &rarr;</a>
+                        <code class="meta-value-code">{{ event.action_id }}</code>
                     {% else %}
                         <span class="text-muted">None (System / Checkpoint)</span>
                     {% endif %}

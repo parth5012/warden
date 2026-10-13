@@ -30,7 +30,7 @@
 
 <dialog id="issue-grant-dialog" style="background: var(--bg-surface, #1e293b); color: var(--text-primary, #f8fafc); border: 1px solid var(--border-subtle, #334155); border-radius: 8px; padding: 1.5rem; max-width: 500px; width: 90%;">
   <h2 style="font-size: 1.1rem; margin-bottom: 1rem;">Issue temporary grant</h2>
-  <form hx-post="/grants" hx-target="#grants-table-container" hx-swap="outerHTML" onsubmit="document.getElementById('issue-grant-dialog').close();">
+  <form hx-post="/grants" hx-target="#grants-table-container" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful) document.getElementById('issue-grant-dialog').close();">
     <div style="margin-bottom: 0.8rem;">
       <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Thread ID</label>
       <input type="text" name="thread_id" required style="width: 100%; padding: 0.4rem; background: var(--bg-base); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 4px;" placeholder="e.g. thread_chat_01">

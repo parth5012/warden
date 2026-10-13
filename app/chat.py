@@ -71,10 +71,10 @@ def _get_or_create_session(thread_id: str, agent_name: str = "OpsAssistant") -> 
             id=f"msg_{uuid.uuid4().hex[:8]}",
             role="agent",
             content=(
-                f"**Aegis AI Agent Seam Online.** Active principal: **{agent.name}** ({agent.model}).\n\n"
+                f"Aegis AI Agent Seam Online. Active principal: {agent.name} ({agent.model}).\n\n"
                 "I am equipped to execute code changes, database operations, and system maintenance. "
                 "All operations are continuously evaluated against Aegis L1 deterministic invariants and L2 semantic policies.\n\n"
-                "*Tip: Try asking me to delete temporary files, inspect the workspace, or query the database.*"
+                "Tip: Try asking me to delete temporary files, inspect the workspace, or query the database."
             ),
             agent_name=agent.name,
             agent_model=agent.model,

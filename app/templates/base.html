@@ -58,7 +58,7 @@
                         <polyline points="17 11 19 13 23 9"></polyline>
                     </svg>
                     Interception Gate
-                    <span class="nav-counter-pill">{{ pending_count|default(0) }}</span>
+                    {% if pending_count|default(0) > 0 %}<span class="nav-counter-pill">{{ pending_count }}</span>{% endif %}
                 </a>
                 <a href="/agents"
    class="nav-link {% if active_page == 'agents' %}active{% endif %}">

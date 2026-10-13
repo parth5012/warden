@@ -173,7 +173,7 @@
         hx-post="/leases"
         hx-target="#leases-table-container"
         hx-swap="outerHTML"
-        onsubmit="document.getElementById('issue-lease-modal').close();"
+        hx-on::after-request="if(event.detail.successful) document.getElementById('issue-lease-modal').close();"
         style="display: flex; flex-direction: column; gap: 1rem;"
     >
         <div>
