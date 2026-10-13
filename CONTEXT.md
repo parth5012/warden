@@ -13,6 +13,8 @@ Status: **design grilling in progress.** Decisions below are LOCKED — do not r
 | **Outcome** | `Allowed(result)` \| `Denied(reason, policy)` \| `Pending(gate_request)` \| `Error(reason)`. |
 | **Policy decision** | `allow` \| `escalate` \| `deny`. Only `escalate` ever reaches a human. |
 | **Gate (HITL)** | Human approval point. Expressed as `Pending(gate_request)`; parked by the re-entry helper. |
+| **Grant (Capability)** | Human-issued, task-scoped, time-bound capability auto-allowing covered `escalate` actions without human parking. |
+| **Custody lease (dropped)** | Yash PR-16 supervisor-minted specialist assignment token; dropped in favor of user grants. |
 | **Re-entry helper** | The single function (in `governance/hitl/`) that runs `execute()` → parks on `Pending` → resumes with the human decision → re-calls `execute()`. Every demo graph calls this; nobody rewrites it. |
 | **AuditJournal** | Append-only event store. Source of truth for telemetry, search, decision graph, approvals inbox. |
 | **Projection** | Pure function `events -> view`. Cost rollup, latency, decision graph, approvals inbox are all projections. |

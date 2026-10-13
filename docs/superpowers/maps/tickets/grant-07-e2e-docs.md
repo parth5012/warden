@@ -1,7 +1,7 @@
 # Grant-07: E2E proof + docs + rollout verification
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: Grant-05, Grant-06 · Claim: _unclaimed_
+Blocked by: Grant-05, Grant-06 · Claim: `@me`
 
 ## Question
 
@@ -16,8 +16,8 @@ Prove the whole story end to end and record the decisions, closing the map.
 
 ## Done when
 
-- [ ] E2E green; docs entries present; LOG.md demo script recorded.
-- [ ] Map destination met: feature implemented, tested, demoable with no open decisions.
+- [x] E2E green; docs entries present; LOG.md demo script recorded.
+- [x] Map destination met: feature implemented, tested, demoable with no open decisions.
 
 ## Context pointers
 
@@ -26,4 +26,4 @@ Prove the whole story end to end and record the decisions, closing the map.
 
 ## Resolution
 
-_unresolved — agent: append E2E results + docs links + verification output, then mark boxes._
+E2E test suite implemented in `tests/test_e2e_grants.py` proving the complete Grants lifecycle (upfront issuance zero parks, revocation mid-task re-parking, inbox upgrade resolution, and Lock 5 terminal deny bypass defense). Updated glossary in `CONTEXT.md`, added Decision 3 to `DECISIONS.md`, updated demo-flow notes in `ROADMAP.md`, and recorded the live demo script in `LOG.md`. All 315 tests pass (6 skipped); mypy strict clean (0 errors in 70 files). Map #24 destination fully met.

@@ -31,10 +31,10 @@ Destination: all tickets closed and the Grants feature from `docs/superpowers/sp
 
 ## Tickets (GitHub issues — refer by name)
 
-1. [Grant-01: Remove the Yash-style leases port](https://github.com/parth5012/warden/issues/26) — frontier
-2. [Grant-02: Reclassify scoped destructive intent to escalate](https://github.com/parth5012/warden/issues/25) — frontier
-3. [Grant-03: GrantsStore protocol + in-memory adapter](https://github.com/parth5012/warden/issues/31) — frontier
-4. [Grant-04: Executor grant check + journal events](https://github.com/parth5012/warden/issues/30) — blocked by Grant-02, Grant-03
-5. [Grant-05: Grants HTTP + task form + inbox upgrade + grants list](https://github.com/parth5012/warden/issues/29) — blocked by Grant-04
-6. [Grant-06: Audit kinds + timeline rendering](https://github.com/parth5012/warden/issues/27) — blocked by Grant-04
-7. [Grant-07: E2E proof + docs + rollout verification](https://github.com/parth5012/warden/issues/28) — blocked by Grant-05, Grant-06
+1. [Grant-01: Remove the Yash-style leases port](https://github.com/parth5012/warden/issues/26) — [closed in #32]
+2. [Grant-02: Reclassify scoped destructive intent to escalate](https://github.com/parth5012/warden/issues/25) — [closed in #34]
+3. [Grant-03: GrantsStore protocol + in-memory adapter](https://github.com/parth5012/warden/issues/31) — [closed in #35]
+4. [Grant-04: Executor grant check + journal events](https://github.com/parth5012/warden/issues/30) — [closed in #36]
+5. [Grant-05: Grants HTTP + task form + inbox upgrade + grants list](https://github.com/parth5012/warden/issues/29) — [closed in #37]
+6. [Grant-06: Audit kinds + timeline rendering](https://github.com/parth5012/warden/issues/27) — [closed in #38]
+7. [Grant-07: E2E proof + docs + rollout verification](https://github.com/parth5012/warden/issues/28) — [closed in #39]

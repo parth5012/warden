@@ -11,7 +11,7 @@ Decision 10: start with ONE agent that proves all four PS bullets, then expand s
 One graph, four proof points:
 1. **Telemetry** — LLM calls + tool calls journaled: token cost, latency, tool usage (projections over the journal)
 2. **HITL gate** — email send → policy `escalate` → `Pending` → re-entry helper parks → approvals inbox shows the request → approve with named key → action executes
-3. **Guardrail deny** — `DROP TABLE` → policy `deny` → terminal, no approval possible (demo the refusal)
+3. **Guardrail deny & grants** — unbounded destructive DDL (`DROP DATABASE`, `DROP TABLE ... CASCADE`) → terminal `deny`, no override possible; bounded operations (`DROP TABLE <name>`, `/workspace/tmp/` batch delete) → `escalate` (interception gate), auto-allowed when covered by temporary user grant
 4. **Sandbox** — shell tool `rm -rf` → contained in Docker container with network isolation
 
 Exit criteria: judge can watch all four beats live; `pytest` green; journal survives a kill -9 mid-park (write-ahead replay works).

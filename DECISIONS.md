@@ -51,3 +51,34 @@ Static rules alone miss contextual prompt injection, natural language jailbreaks
 - Fail-closed invariant preserved: Sidecar timeout or crash returns `Error("governance_unavailable")`.
 - Terminal DENY invariant preserved: Any layer issuing `deny` immediately appends `action_denied` to `AuditJournal` and aborts.
 - Documented in `docs/LAYERED_SAFETY_ARCHITECTURE.md`.
+
+---
+
+## 3. Scoped Destructive Policy Reclassification & User Grants (2026-10-12)
+
+**Status:** Accepted. **Complements:** lock 5 ("DENY is terminal"), lock 2 ("Pending is data"), lock 8 ("Approver identity = named keys").
+
+**Decision.**
+1. **Scoped Destructive Reclassification (Policy change, not lock change):**
+   - Parseable, bounded destructive intent is reclassified from terminal `deny` to grantable `escalate`:
+     - Single explicit table-name DDL (`DROP TABLE <name>`, no wildcards, no cascade, no multi-statement) routes to `scoped-ddl-drop-table`.
+     - File deletions confined strictly under `/workspace/tmp/` route to `scoped-fs-batch-delete`.
+   - Unbounded or unparseable destructive operations (`DROP DATABASE`, multi-statement DDL, `CASCADE`, unconfined `rm -rf /`, `/etc/shadow`, path traversal `..`) remain terminally denied under `no-destructive-sql` and `no-destructive-shell`.
+2. **Lock 5 Preservation:**
+   - Lock 5 stands: terminal `deny` can never be overridden by humans or covered by grants. The engine only verifies boundedness and parseability; grants are only evaluated on the `escalate` path.
+3. **User Grants vs Custody Leases:**
+   - Yash's PR-16 supervisor-minted specialist custody tokens are dropped. Replaced with human-issued, task-scoped, time-bound capability grants (`GrantsStore`, in-memory first, exact-plus-prefix matching, 30-min default TTL, 5 default max-uses).
+
+**Context.**
+Previously, actions like `DROP TABLE` or batch file deletion were blanket terminal denies. For legitimate maintenance tasks ("clean up `/workspace/tmp/`, drop table `staging_imports`"), this forced humans to either edit policy files or be locked out entirely. Grants allow operators to pre-authorize or inbox-upgrade bounded operations for a specific task thread without punching holes in terminal invariants.
+
+**Alternatives considered.**
+- *Human Override of Deny:* Rejected. Reopening Lock 5 to allow approvers to override a terminal `deny` destroys audit safety and invites prompt injection bypasses.
+- *Supervisor-Minted Leases (PR 16):* Rejected. PR-16 leases proved which specialist was assigned, not whether a human permitted the operation. Human accountability requires user-granted capabilities.
+- *Semantic Matching (pgvector) in v1:* Deferred. Exact-name and directory-prefix matching is deterministic, audit-verifiable, and zero-dependency.
+
+**Consequences.**
+- `GuardedExecutor` checks `GrantsStore` solely on the `escalate` path after `POLICY_EVALUATED`. Live covering grants consume 1 use, append `grant_consumed` to `AuditJournal`, and auto-allow execution.
+- Without a grant, actions park to `Pending` (`GATE_REQUESTED`).
+- Audit timeline renders grant events (`grant_issued`, `grant_consumed`, `grant_revoked`, `grant_expired`) in causal sequence.
+- Documented in `docs/superpowers/specs/2026-10-12-user-grants-design.md` and `CONTEXT.md`.

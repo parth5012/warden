@@ -1,5 +1,42 @@
 # LOG.md — Warden
 
+## 2026-10-12 — User-Granted Temporary Permissions ("Grants") Handover (Map #24)
+
+**Status:** Done (315 passed, 6 skipped full suite; 0 mypy errors across 70 files)
+
+Why: Replace supervisor-minted custody leases with user-minted, task-scoped, time-bound capability grants. Allows operators to pre-authorize or inbox-upgrade inherently risky operations for a task thread, auto-allowing covered `escalate` actions without human interruption, while maintaining Lock 5 terminal denials.
+
+What changed:
+- **Grant-01 (#26)**: Removed untracked PR-16 custody lease files (`src/warden/leases.py`, `tests/test_leases.py`) with zero remaining references. Preserved golden evals dataset in `tests/evals/` and registered grants specification. (Sub-PR #32)
+- **Grant-02 (#25)**: Reclassified parseable, bounded destructive intent (`scoped-ddl-drop-table`, `scoped-fs-batch-delete`) from terminal `deny` to grantable `escalate`. Preserved Lock 5 terminal deny for unbounded/unparseable actions (`DROP DATABASE`, multi-statement DDL, `CASCADE`, unconfined `rm -rf /`, `/etc/shadow`, traversal `..`). (Sub-PR #34)
+- **Grant-03 (#31)**: Built pure kernel module `src/warden/grants.py` containing `Grant`, `ScopeRule`, `GrantsStore` protocol, and `InMemoryGrantsStore` adapter with clock injection, exact-plus-prefix matching, multi-target validation, and path traversal defense. (Sub-PR #35)
+- **Grant-04 (#30)**: Wired live covering grant lookup into `GuardedExecutor.execute()` on the escalation path, consuming uses and emitting `grant_consumed` events without parking. Maintained strict terminal deny invariant on deny path. Added grant event kinds to `EventKind`. (Sub-PR #36)
+- **Grant-05 (#29)**: Implemented `app/grants.py` with `POST /grants`, `GET /grants`, and `POST /grants/{id}/revoke` endpoints (range validation 5..240m TTL, 1..50 uses, 404/409 error handling). Added inbox upgrade ("Grant Rest of Task") in `app/chat.py` and task form upfront grant block in `chat.html`. (Sub-PR #37)
+- **Grant-06 (#27)**: Added grant audit kinds to search filters and seed datasets in `backend/api/audit.py` and `app/audit.py`. Updated decision-graph projection in `backend/api/runs.py` to preserve causal ordering, and rendered structured timeline events in `frontend/templates/run_detail.html`. (Sub-PR #38)
+- **Grant-07 (#28)**: Added end-to-end integration proof `tests/test_e2e_grants.py`. Updated domain glossary in `CONTEXT.md`, added Decision 3 to `DECISIONS.md`, and updated demo flow in `ROADMAP.md`. (Sub-PR #39)
+
+Demo Script:
+1. **Upfront Task Grant**:
+   - Open Chat or POST `/chat/message` with `attach_grant=1`, `grant_tool=*`, `grant_ttl=30`, `grant_uses=5`.
+   - Run task with `batch_delete_files` on `/workspace/tmp/` followed by `DROP TABLE staging_imports;`.
+   - Both actions auto-allow with zero human interruption; WAL logs `grant_consumed` (uses left: 4 -> 3).
+2. **Revocation**:
+   - Call `POST /grants/{id}/revoke`.
+   - Next destructive action (`DROP TABLE staging_imports;`) immediately parks at interception gate (`gate_requested`).
+3. **Inbox Upgrade ("Grant Rest of Task")**:
+   - On parked gate in chat stream, operator clicks `⚡ Grant Rest of Task`.
+   - Action payload derives scoped constraint; grant is issued and parked action executes to `Allowed` (1 use consumed).
+   - Subsequent calls on the same thread auto-allow under the grant.
+4. **Terminal Deny Security Guard**:
+   - Submitting unbounded `DROP DATABASE prod;` or `rm -rf /` terminally denies (`no-destructive-sql` / `no-destructive-shell`). Lock 5 strictly upheld; grant is never consulted.
+5. **Audit Explorer & Timeline**:
+   - `/audit?kind=grant_consumed` displays consumption records with true approver attribution (Lock 8).
+   - `/runs/{thread_id}` and `/api/runs/{thread_id}/graph` show full causal sequence: `grant_issued -> action_requested -> grant_consumed -> action_completed -> gate_requested`.
+
+Verification:
+- Full test suite: 315 passed, 6 skipped in 6.2s.
+- Static typing: Mypy strict mode clean across all 70 source and test files.
+
 ## 2026-10-12 — PostgreSQL WAL persistence & login audit integration (PR #20)
 
 **Status:** Done (263 passed, 6 skipped full suite, 0 mypy errors across 76 files)
