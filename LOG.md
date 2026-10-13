@@ -37,6 +37,36 @@ Verification:
 - Full test suite: 315 passed, 6 skipped in 6.2s.
 - Static typing: Mypy strict mode clean across all 70 source and test files.
 
+## 2026-10-13 — Chat UI theme fixes via Impeccable live mode
+
+**Status:** Done (254 passed + 6 skipped full suite; /chat renders accepted variants in light mode)
+
+Why: chat header bar and agent message bubble used dark-hardcoded colors
+(navy bar background, sky-blue JSON args, dark-only verdict hues) that washed
+out under the light theme; header text was near-unreadable with Light on.
+
+What changed (2 live-mode accepts, both carbonized into source):
+- `app/templates/chat.html` + `app/static/css/chat.css`: header bar is now
+  theme-native (transparent over panel, `border-subtle`, compact 30px avatar,
+  inline emerald guard status, ghost queue link). Replaces the hardcoded
+  `rgba(15,23,42,0.8)` background.
+- `app/templates/components/chat_message.html` + `chat.css`: agent bubble
+  redesigned as a verdict-tinted "exhibit" (amber proposal box, theme-token
+  args/code colors, verdict stamps). Tested verdict copy restored
+  (`INTERCEPTION GATE ACTIVE`, `TERMINAL POLICY DENY (LOCK 5)`) plus the
+  deny-branch `execution_result`, after 4 `tests/test_chat.py` failures
+  caught the drift (red → green).
+- Caught at commit time: `Path.read_text()` mojibake on Windows
+  (see LEARNINGS.md 15); repaired spans, full suite re-greened.
+- Left out of this commit: `app/templates/base.html` live-picker injection
+  (dev-only live-mode artifact) and untracked `PRODUCT.md` / `DESIGN.md` /
+  `.impeccable/`.
+
+Verified: Jinja parse ok on 3 templates; full pytest 254 passed + 6 skipped;
+unicode scan matches HEAD character sets; /chat snapshot shows accepted
+header + exhibit bubble in light mode.
+>>>>>>> origin/main
+
 ## 2026-10-12 — PostgreSQL WAL persistence & login audit integration (PR #20)
 
 **Status:** Done (263 passed, 6 skipped full suite, 0 mypy errors across 76 files)

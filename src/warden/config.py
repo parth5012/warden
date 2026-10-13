@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 _CURRENT_DIR = Path(__file__).resolve().parent
 _WORKSPACE_ROOT = _CURRENT_DIR.parent.parent
 _ENV_FILES = (
+    str(_WORKSPACE_ROOT / "backend" / ".env"),
     str(_WORKSPACE_ROOT / ".env"),
     str(_CURRENT_DIR / ".env"),
     ".env",

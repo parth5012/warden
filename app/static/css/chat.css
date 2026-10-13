@@ -168,12 +168,13 @@
 }
 
 .chat-header-bar {
-    background: rgba(15, 23, 42, 0.8);
-    border-bottom: 1px solid var(--border-card, rgba(255, 255, 255, 0.11));
-    padding: 0.85rem 1.25rem;
+    background: transparent;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 0.6rem 1.25rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 0.75rem;
     backdrop-filter: blur(8px);
 }
 
@@ -551,3 +552,35 @@
     opacity: 0.7;
     pointer-events: none;
 }
+
+/* Minimal chat header (accepted live variant 43d474ac): theme-native bar,
+   compact identity cluster, inline guard status, ghost queue link. */
+.agent-live-avatar.avatar-sm { width: 30px; height: 30px; font-size: 0.68rem; border-radius: 6px; }
+.agent-live-title.title-sm { font-size: 0.85rem; }
+.guard-inline { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; color: var(--color-emerald-text); margin-left: 0.6rem; white-space: nowrap; }
+.guard-inline .pulse-dot { width: 6px; height: 6px; }
+.queue-ghost-link { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; padding: 0.4rem 0.5rem; border-radius: 6px; white-space: nowrap; }
+.queue-ghost-link:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+
+/* Exhibit message bubble (accepted live variant 3d325551): theme-native
+   proposal evidence plus verdict stamps; replaces dark-hardcoded proposal
+   colors that washed out in light mode. */
+.chat-message-row.agent .msg-bubble.exhibit { background: var(--bg-surface); border: 1px solid var(--border-card); border-radius: 8px; padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.7rem; }
+.exhibit-content { white-space: pre-wrap; font-size: 0.84rem; line-height: 1.55; color: var(--text-primary); }
+.exhibit-proposal { border: 1px solid var(--color-amber-border); border-radius: 6px; overflow: hidden; }
+.exhibit-proposal-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0.8rem; background: rgba(245, 158, 11, 0.14); border-bottom: 1px solid var(--color-amber-border); font-family: var(--font-mono); }
+.exhibit-tool { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-amber-text); font-weight: 700; font-size: 0.75rem; }
+.exhibit-action-id { color: var(--text-muted); font-size: 0.68rem; white-space: nowrap; }
+.exhibit-args { margin: 0; padding: 0.65rem 0.8rem; font-family: var(--font-mono); font-size: 0.74rem; line-height: 1.5; color: var(--text-primary); background: var(--bg-diff-canvas); max-height: 180px; overflow: auto; white-space: pre; }
+.exhibit-stamp { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; padding: 0.55rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-card); }
+.exhibit-stamp.deny { color: var(--color-ruby-text); border-color: var(--color-ruby-border); background: var(--color-ruby-bg); flex-wrap: wrap; }
+.exhibit-stamp.gate { color: var(--color-amber-text); border-color: var(--color-amber-border); background: var(--color-amber-bg); flex-wrap: wrap; }
+.exhibit-stamp.ok { color: var(--color-emerald-text); border-color: var(--color-emerald-border); background: var(--color-emerald-bg); }
+.exhibit-gate-reason { flex-basis: 100%; font-family: var(--font-sans); font-size: 0.78rem; font-weight: 400; letter-spacing: normal; text-transform: none; color: var(--text-secondary); }
+.exhibit-gate-actions { display: flex; gap: 0.6rem; flex-basis: 100%; }
+.exhibit-approve { background: var(--color-emerald); color: #fff; font-weight: 700; font-family: var(--font-mono); font-size: 0.75rem; padding: 0.42rem 0.85rem; border-radius: 4px; border: none; cursor: pointer; }
+.exhibit-approve:hover { filter: brightness(1.08); }
+.exhibit-denybtn { background: transparent; color: var(--color-ruby-text); border: 1px solid var(--color-ruby-border); font-weight: 600; font-family: var(--font-mono); font-size: 0.75rem; padding: 0.42rem 0.85rem; border-radius: 4px; cursor: pointer; }
+.exhibit-denybtn:hover { background: var(--color-ruby-bg); }
+.exhibit-stamp-sub { flex-basis: 100%; font-family: var(--font-sans); font-size: 0.78rem; font-weight: 400; letter-spacing: normal; text-transform: none; color: var(--text-secondary); }
+.exhibit-stamp-sub.mono { font-family: var(--font-mono); font-size: 0.72rem; }

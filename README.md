@@ -1,8 +1,8 @@
-# Warden — AI Agent Governance & Human Accountability
+# Aegis — AI Agent Governance & Human Accountability
 
 > **Every LLM call and tool call crosses one seam. Nothing downstream can be skipped.**
 
-Warden is a governance layer that LangGraph-based agents run *through*. It provides a single, auditable execution path for all agent actions: every call is journaled, checked against policy, sandboxed, and — when policy is unsure — parked for human approval before any side effect takes place.
+Aegis is a governance layer that LangGraph-based agents run *through*. It provides a single, auditable execution path for all agent actions: every call is journaled, checked against policy, sandboxed, and — when policy is unsure — parked for human approval before any side effect takes place.
 
 ---
 
@@ -15,7 +15,7 @@ Autonomous AI agents can take irreversible actions: send emails, modify database
 - You cannot require human sign-off on high-risk operations.
 - You cannot enforce deterministic policy across multiple agents.
 
-Warden solves this by making **every action cross a single, policy-enforced execution seam** before it can touch the outside world.
+Aegis solves this by making **every action cross a single, policy-enforced execution seam** before it can touch the outside world.
 
 ---
 

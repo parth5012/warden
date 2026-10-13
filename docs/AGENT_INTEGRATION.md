@@ -56,7 +56,7 @@ class MyCustomAgent(BaseAgent):
     ) -> AgentTurnResult:
         # 1. Your LLM / agent logic here:
         # e.g., response = await my_llm.ainvoke(user_message)
-        
+
         # 2. If the agent wants to propose a tool action:
         proposed_action = Action(
             id=f"act_custom_{uuid.uuid4().hex[:6]}",

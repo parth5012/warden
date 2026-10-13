@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Guarded LLM — Aegis AI Governance Console{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <h1 class="page-title">Guarded LLM Client</h1>
+        <p class="page-subtitle">Every prompt is evaluated by policy and executed only through GuardedExecutor → GuardedLLMClient → Groq.</p>
+    </div>
+    <span class="storage-mode-pill {% if configured %}live{% else %}demo{% endif %}">
+        <span class="mode-dot"></span>
+        {% if configured %}GROQ CONFIGURED{% else %}PREFLIGHT AVAILABLE · PROVIDER NOT CONFIGURED{% endif %}
+    </span>
+</section>
+
+<div class="llm-workspace">
+    <section class="card-panel llm-card">
+        <h2>Run a governed prompt</h2>
+        <p>Token estimation is local. Execute invokes the provider only after the policy allows the exact request.</p>
+        {% if not configured %}
+        <div class="llm-result llm-result-pending" role="status">
+            Groq is not configured. Add <code>GROQ_API_KEY</code> to <code>backend/.env</code> or the server environment, then restart Aegis. Estimates and policy denials remain available.
+        </div>
+        {% endif %}
+        <form id="guarded-llm-form">
+            <div class="llm-form-grid">
+                <div>
+                    <label for="llm-model">Groq model</label>
+                    <select id="llm-model" name="model">
+                        {% for model in models %}
+                        <option value="{{ model }}" {% if model == default_model %}selected{% endif %}>{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="llm-max-tokens">Maximum output tokens</label>
+                    <input id="llm-max-tokens" name="max_tokens" type="number" value="512" min="1" max="32768" required>
+                </div>
+            </div>
+            <label for="llm-prompt">Prompt</label>
+            <textarea id="llm-prompt" name="prompt" rows="7" maxlength="100000" required
+                      placeholder="Enter a prompt to estimate or submit through policy enforcement."></textarea>
+            <div class="llm-actions">
+                <label class="llm-check">
+                    <input type="checkbox" name="require_approval" value="true">
+                    Require operator approval
+                </label>
+                <div class="llm-actions">
+                    <button class="btn-action" type="button"
+                            hx-post="/llm/estimate" hx-include="#guarded-llm-form"
+                            hx-target="#llm-result" hx-swap="innerHTML">Estimate tokens</button>
+                    <button class="btn-action" type="button"
+                            hx-post="/llm/invoke" hx-include="#guarded-llm-form"
+                            hx-target="#llm-result" hx-swap="innerHTML">Execute guarded call</button>
+                </div>
+            </div>
+        </form>
+        <div id="llm-result" aria-live="polite"></div>
+    </section>
+
+    <section class="card-panel llm-card">
+        <h2>Usage & cost summary</h2>
+        <p>Values are read from the same audit journal used by GuardedLLMClient and the telemetry API.</p>
+        <dl class="llm-summary-grid">
+            <div><dt>Recent records</dt><dd>{{ records|length }}</dd></div>
+            <div><dt>Total tokens</dt><dd>{{ summary.total_tokens }}</dd></div>
+            <div><dt>Input tokens</dt><dd>{{ summary.total_prompt_tokens }}</dd></div>
+            <div><dt>Output tokens</dt><dd>{{ summary.total_completion_tokens }}</dd></div>
+            <div><dt>Calculated cost (USD)</dt><dd>${{ "%.6f"|format(summary.estimated_total_cost_usd) }}</dd></div>
+            <div><dt>Average latency</dt><dd>{{ summary.avg_latency_ms }} ms</dd></div>
+        </dl>
+        <p>{{ summary.source_note }}</p>
+        <p>{{ summary.cost_source_note }}</p>
+        <p><a href="/api/llm/usage">Open usage API →</a> · <a href="/api/telemetry">Open telemetry API →</a></p>
+    </section>
+</div>
+
+<section class="card-panel llm-card" style="margin-top: 1.25rem;">
+    <div class="panel-header">
+        <div>
+            <h2 class="panel-title">Guarded LLM Call History</h2>
+            <p class="page-subtitle">Refreshes from the shared journal. Prompt and completion bodies are not stored in telemetry.</p>
+        </div>
+    </div>
+    <div id="llm-usage-table"
+         hx-get="/llm/stream"
+         hx-trigger="load, every 8s, llm-usage-updated from:body"
+         hx-swap="outerHTML">
+        <div class="table-responsive">
+            <table class="table-custom">
+                <thead><tr><th>Action</th><th>Model</th><th>Outcome</th><th>Tokens</th><th>Calculated cost</th><th>Recorded</th></tr></thead>
+                <tbody>
+                {% for record in records %}
+                    <tr>
+                        <td>{{ record.action_id }}</td><td>{{ record.model }}</td>
+                        <td>{{ record.outcome_kind }}</td>
+                        <td>{{ record.total_tokens|default("—") }} {{ record.usage_source|default("") }}</td>
+                        <td>{{ record.calculated_cost_usd|default(record.estimated_cost_usd|default("—")) }}</td>
+                        <td>{{ record.timestamp|default(record.ts|default("—")) }}</td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="empty-state">No guarded LLM calls have been recorded yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

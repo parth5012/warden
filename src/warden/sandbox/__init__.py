@@ -1,4 +1,4 @@
-"""Sandbox execution interfaces and adapters for Warden.
+"""Sandbox execution interfaces and adapters for Aegis.
 
 Provides the SandboxPort boundary and execution result types.
 """

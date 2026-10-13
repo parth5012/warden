@@ -131,6 +131,7 @@ def test_clef_client_parses_noul_answers(monkeypatch: pytest.MonkeyPatch) -> Non
     def fake_urlopen(req: Any, timeout: float | None = None) -> FakeResp:
         seen["url"] = req.full_url
         seen["timeout"] = timeout
+        seen["authorization"] = req.get_header("Authorization")
         return FakeResp()
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
@@ -139,6 +140,7 @@ def test_clef_client_parses_noul_answers(monkeypatch: pytest.MonkeyPatch) -> Non
     assert scores.privilege_creep == 0.9
     assert scores.injection == 0.05
     assert "clef-flash" in str(seen["url"])
+    assert seen["authorization"] == "Bearer tok"
 
 
 def test_clef_client_network_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

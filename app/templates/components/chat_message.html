@@ -26,105 +26,26 @@
             </span>
         </div>
 
-        <div class="msg-bubble">
-            <div style="white-space: pre-wrap;">{{ msg.content }}</div>
-
-            <!-- Proposed Tool Action Box -->
+        <div class="msg-bubble exhibit">
+            <div class="exhibit-content">{{ msg.content }}</div>
             {% if msg.action_proposal %}
-            <div class="tool-proposal-box">
-                <div class="tool-proposal-header">
-                    <span class="tool-name-tag">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                        PROPOSED TOOL: {{ msg.action_proposal.name }}()
-                    </span>
-                    <span style="color: var(--text-muted); font-size: 0.68rem;">Action ID: {{ msg.action_proposal.id }}</span>
-                </div>
-                <pre class="tool-args-pre">{{ msg.action_proposal.payload | tojson(indent=2) }}</pre>
+            <div class="exhibit-proposal">
+                <div class="exhibit-proposal-head"><span class="exhibit-tool"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>PROPOSED TOOL: {{ msg.action_proposal.name }}()</span><span class="exhibit-action-id">Action ID: {{ msg.action_proposal.id }}</span></div>
+                <pre class="exhibit-args">{{ msg.action_proposal.payload | tojson(indent=2) }}</pre>
             </div>
             {% endif %}
-
-            <!-- Seam Verdict: Terminal Deny (Lock 5) -->
             {% if msg.verdict == 'denied' %}
-            <div class="terminal-deny-chat-card">
-                <div class="terminal-deny-header">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
-                    <span>TERMINAL POLICY DENY (LOCK 5) · {{ msg.policy_id }}</span>
-                </div>
-                <div class="terminal-deny-desc">
-                    {{ msg.policy_reason }}
-                </div>
-                {% if msg.execution_result %}
-                <div style="font-size: 0.72rem; color: #fca5a5; font-family: var(--font-mono); margin-top: 0.2rem;">
-                    {{ msg.execution_result }}
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Seam Verdict: HITL Escalation (Gate Pending) -->
+            <div class="exhibit-stamp deny"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg><span>TERMINAL POLICY DENY (LOCK 5) · {{ msg.policy_id }}</span><span class="exhibit-stamp-sub">{{ msg.policy_reason }}</span>{% if msg.execution_result %}<span class="exhibit-stamp-sub mono">{{ msg.execution_result }}</span>{% endif %}</div>
             {% elif msg.verdict == 'escalated' %}
-            <div class="hitl-chat-gate-card">
-                <div class="gate-badge-label">
-                    <span class="pulse-dot" style="background: #fbbf24; box-shadow: 0 0 6px #fbbf24;"></span>
-                    <span>INTERCEPTION GATE ACTIVE · #{{ msg.gate_id }}</span>
-                </div>
-                <div class="gate-reason-text">
-                    <strong>Policy {{ msg.policy_id }}:</strong> {{ msg.policy_reason }}
-                </div>
-                <div class="gate-decision-actions">
-                    <button
-                        class="btn-chat-approve"
-                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision"
-                        hx-vals='{"verdict": "approve", "thread_id": "{{ thread_id }}"}'
-                        hx-target="#chat-messages-box"
-                        hx-swap="innerHTML"
-                        title="Authorize this operation and dispatch to sandbox"
-                    >
-                        ✓ Approve & Execute
-                    </button>
-                    <button
-                        class="btn-chat-deny"
-                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision"
-                        hx-vals='{"verdict": "deny", "thread_id": "{{ thread_id }}"}'
-                        hx-target="#chat-messages-box"
-                        hx-swap="innerHTML"
-                        title="Reject this operation"
-                    >
-                        ✕ Deny Operation
-                    </button>
-                    <button
-                        class="btn-chat-grant"
-                        style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); padding: 0.35rem 0.65rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.3rem;"
-                        hx-post="/chat/actions/{{ msg.action_proposal.id }}/grant"
-                        hx-vals='{"thread_id": "{{ thread_id }}"}'
-                        hx-target="#chat-messages-box"
-                        hx-swap="innerHTML"
-                        title="Grant rest of task: issue task grant covering this operation and auto-resolve"
-                    >
-                        ⚡ Grant Rest of Task
-                    </button>
-                </div>
-            </div>
+            <div class="exhibit-stamp gate"><span class="pulse-dot" style="width: 7px; height: 7px;"></span><span>INTERCEPTION GATE ACTIVE · #{{ msg.gate_id }}</span><span class="exhibit-gate-reason"><strong>Policy {{ msg.policy_id }}:</strong> {{ msg.policy_reason }}</span><span class="exhibit-gate-actions"><button class="exhibit-approve" hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision" hx-vals='{"verdict": "approve", "thread_id": "{{ thread_id }}"}' hx-target="#chat-messages-box" hx-swap="innerHTML" title="Authorize this operation and dispatch to sandbox">✓ Approve & Execute</button><button class="exhibit-denybtn" hx-post="/chat/actions/{{ msg.action_proposal.id }}/decision" hx-vals='{"verdict": "deny", "thread_id": "{{ thread_id }}"}' hx-target="#chat-messages-box" hx-swap="innerHTML" title="Reject this operation">✕ Deny Operation</button><button class="exhibit-grantbtn" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; cursor: pointer;" hx-post="/chat/actions/{{ msg.action_proposal.id }}/grant" hx-vals='{"thread_id": "{{ thread_id }}"}' hx-target="#chat-messages-box" hx-swap="innerHTML" title="Grant rest of task: issue task grant covering this operation and auto-resolve">⚡ Grant Rest of Task</button></span></div>
 
             <!-- Post-Decision: Granted Rest of Task -->
             {% elif msg.verdict == 'granted' %}
-            <div class="exec-result-chip" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                <span>TASK CAPABILITY GRANTED: {{ msg.execution_result }}</span>
-            </div>
-
-            <!-- Post-Decision: Approved & Executed -->
+            <div class="exhibit-stamp ok" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span>TASK CAPABILITY GRANTED: {{ msg.execution_result }}</span></div>
             {% elif msg.verdict == 'approved' %}
-            <div class="exec-result-chip">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span>{{ msg.execution_result }}</span>
-            </div>
-
-            <!-- Allowed Deterministically -->
+            <div class="exhibit-stamp ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg><span>{{ msg.execution_result }}</span></div>
             {% elif msg.verdict == 'allowed' and msg.execution_result %}
-            <div class="exec-result-chip">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>
-                <span>{{ msg.execution_result }}</span>
-            </div>
+            <div class="exhibit-stamp ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg><span>{{ msg.execution_result }}</span></div>
             {% endif %}
         </div>
     </div>

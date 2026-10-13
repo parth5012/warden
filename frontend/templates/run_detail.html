@@ -11,9 +11,17 @@
     <h1 class="page-title" style="font-family: var(--font-mono);">Thread: {{ thread_id }}</h1>
     <p class="page-desc">Inspection timeline and checkpoint steps.</p>
   </div>
-  <div>
+  <div id="run-detail-actions">
     {% if state_info and state_info.is_parked %}
-      <span class="badge badge-pending" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">PARKED ON APPROVAL</span>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span class="badge badge-pending" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">PARKED ON APPROVAL</span>
+        <button class="btn btn-approve" hx-post="/partials/runs/{{ thread_id }}/resume" hx-vals='{"decision": "approve"}' hx-target="#run-detail-actions" hx-swap="outerHTML">Approve & Resume</button>
+        <button class="btn btn-deny" hx-post="/partials/runs/{{ thread_id }}/resume" hx-vals='{"decision": "deny"}' hx-target="#run-detail-actions" hx-swap="outerHTML">Deny</button>
+      </div>
+    {% elif state_info and state_info.approved is sameas true %}
+      <span class="badge badge-allowed" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">APPROVED &bull; COMPLETED</span>
+    {% elif state_info and state_info.approved is sameas false %}
+      <span class="badge badge-denied" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">DENIED &bull; ABORTED</span>
     {% else %}
       <span class="badge badge-allowed" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">ACTIVE / COMPLETED</span>
     {% endif %}

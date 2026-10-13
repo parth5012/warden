@@ -1,4 +1,4 @@
-"""Core domain types for Warden.
+"""Core domain types for Aegis.
 
 Action, Outcome, and checkpoint-related types.
 Everything here is a plain dataclass — no IO, no side effects.

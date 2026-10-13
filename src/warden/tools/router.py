@@ -1,11 +1,6 @@
-"""ToolRouter: preview-only dispatcher over EXISTING seams.
+"""ToolRouter: preview-only dispatcher over existing governance seams.
 
-No executor/journal/runner created here. preview() is pure (no side
-effects): it runs the existing PolicyEngine and maps the verdict onto
-warden.models Outcome types so the future GuardedExecutor can adopt it
-unchanged. Groq is the core LLM: get_router_llm() returns the configured
-ChatOpenAI client (may be None without GROQ_API_KEY); LLM actions
-(kind=llm) skip sandbox — timeout + token accounting only (lock 7).
+LLM drafts use the backend's shared GuardedExecutor and GuardedLLMClient path.
 """
 
 from __future__ import annotations
@@ -13,7 +8,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from warden.config import get_groq_llm
 from warden.models import Action, ActionKind, Allowed, Denied, Error, GateRequest, Outcome, Pending
 from warden.policy.engine import PolicyDecision, PolicyEngine, PolicyError
 
@@ -70,22 +64,21 @@ class ToolRouter:
 
 
 def get_router_llm() -> Any | None:
-    """Return the configured Groq client, or None when unconfigured."""
-    return get_groq_llm()
+    """Return no raw provider client; provider calls must use the guarded seam."""
+    return None
 
 
-async def draft_with_groq(prompt: str) -> str:
-    """Draft via Groq; deterministic stub when unconfigured/offline."""
-    llm = get_router_llm()
-    if llm is None:
-        return "Groq unavailable — stub draft: weekly ops report ready"
-    try:
-        response = llm.invoke(f"Draft a concise one-sentence ops summary for: {prompt}")
-        content = getattr(response, "content", response)
-        text = str(content).strip().replace("\n", " ")
-        return text or "Groq unavailable — stub draft: weekly ops report ready"
-    except Exception:
-        return "Groq unavailable — stub draft: weekly ops report ready"
+async def draft_with_groq(prompt: str, thread_id: str | None = None) -> str:
+    """Generate a Groq draft through the shared guarded LLM execution path."""
+    from backend.api.llm import invoke_agent_draft
+
+    thread = thread_id or f"agent-chat-{uuid.uuid4().hex[:12]}"
+    return await invoke_agent_draft(
+        prompt=prompt,
+        run_id=f"agent-run:{thread}",
+        thread_id=thread,
+        actor="OpsAssistant",
+    )
 
 
 def make_tool_action(name: str, payload: dict[str, Any], run_id: str, thread_id: str) -> Action:

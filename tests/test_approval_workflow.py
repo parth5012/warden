@@ -7,7 +7,6 @@ from app.workflow import (
 )
 import pytest
 
-
 def test_review_metrics_share_one_queue_scope() -> None:
     actions = [
         {"status": "Escalated", "risk": "Critical"},
@@ -44,4 +43,3 @@ def test_invalid_transition_is_rejected() -> None:
         validate_transition("denied", "approved")
     with pytest.raises(InvalidTransition):
         validate_transition("pending", "succeeded")
-

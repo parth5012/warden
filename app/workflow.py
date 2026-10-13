@@ -1,4 +1,4 @@
-"""Approval lifecycle contract used by Warden's UI projections.
+"""Approval lifecycle contract used by Aegis's UI projections.
 
 This module deliberately does not persist decisions or authorize operators. A
 production decision handler must perform authentication, authorization, CSRF
