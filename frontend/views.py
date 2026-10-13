@@ -281,6 +281,28 @@ async def run_detail_view(request: Request, thread_id: str) -> HTMLResponse:
         except Exception:
             pass
 
+    events_list: list[dict[str, Any]] = []
+    from app.audit import JOURNAL_STORE
+    from backend.api.audit import AUDIT_EVENTS
+
+    if hasattr(JOURNAL_STORE, "_events") and JOURNAL_STORE._events:
+        for e in JOURNAL_STORE._events:
+            if getattr(e, "thread_id", None) == thread_id:
+                events_list.append(
+                    e.to_dict()
+                    if hasattr(e, "to_dict")
+                    else {
+                        "kind": e.kind,
+                        "actor": e.actor,
+                        "description": e.description,
+                        "payload": e.payload,
+                        "ts": getattr(e, "ts", "") or getattr(e, "timestamp", ""),
+                    }
+                )
+
+    if not events_list:
+        events_list = [e for e in AUDIT_EVENTS if e.get("thread_id") == thread_id]
+
     return templates.TemplateResponse(
         request,
         "run_detail.html",
@@ -289,6 +311,7 @@ async def run_detail_view(request: Request, thread_id: str) -> HTMLResponse:
             "thread_id": thread_id,
             "state_info": state_info,
             "history": history,
+            "events": events_list,
             "pending_count": 1 if state_info.get("is_parked") else 0,
         },
     )

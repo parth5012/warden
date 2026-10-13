@@ -62,6 +62,38 @@
     {% else %}
       <p style="color: var(--text-dim);">No prior step history available for this thread.</p>
     {% endif %}
+
+    {% if events %}
+      <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.25rem;">
+        <h3 style="font-size: 0.95rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em;">Timeline Events</h3>
+        {% for evt in events %}
+        <div class="timeline-event-card" style="padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-surface); display: flex; gap: 0.75rem; align-items: flex-start;">
+          <span class="badge {% if evt.kind == 'grant_issued' %}badge-pending{% elif evt.kind == 'grant_consumed' %}badge-allowed{% elif evt.kind in ('grant_revoked', 'grant_expired', 'action_denied') %}badge-denied{% else %}badge-allowed{% endif %}" style="font-size: 0.72rem; padding: 0.2rem 0.5rem; text-transform: uppercase;">
+            {{ evt.kind }}
+          </span>
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.25rem;">
+              <strong style="color: var(--text-primary);">{{ evt.actor|default("GuardedExecutor") }}</strong>
+              <span style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim);">{{ evt.ts }}</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+              {% if evt.description %}
+                {{ evt.description }}
+              {% elif evt.kind == 'grant_issued' %}
+                Issued grant {{ evt.payload.grant_id }} for {{ evt.payload.tool }} ({{ evt.payload.max_uses }} max uses)
+              {% elif evt.kind == 'grant_consumed' %}
+                Consumed grant {{ evt.payload.grant_id }} ({{ evt.payload.uses_left }} uses left)
+              {% elif evt.kind == 'grant_revoked' %}
+                Revoked grant {{ evt.payload.grant_id }} by {{ evt.payload.revoked_by }}
+              {% else %}
+                {{ evt.payload }}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

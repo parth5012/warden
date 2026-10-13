@@ -50,6 +50,55 @@ AUDIT_EVENTS: list[dict[str, Any]] = [
         },
         "ts": "2026-10-11T13:50:00Z",
     },
+    {
+        "id": "evt-004",
+        "run_id": "run-004",
+        "thread_id": "grant-demo-thread",
+        "action_id": None,
+        "checkpoint_step": 1,
+        "kind": "grant_issued",
+        "actor": "approver:alice",
+        "description": "Grant gr_seed_01 issued by alice for batch_delete_files (5 max uses)",
+        "payload": {
+            "grant_id": "gr_seed_01",
+            "tool": "batch_delete_files",
+            "max_uses": 5,
+            "ttl_minutes": 30,
+        },
+        "ts": "2026-10-11T14:10:00Z",
+    },
+    {
+        "id": "evt-005",
+        "run_id": "run-004",
+        "thread_id": "grant-demo-thread",
+        "action_id": "act-004",
+        "checkpoint_step": 2,
+        "kind": "grant_consumed",
+        "actor": "GuardedExecutor",
+        "description": "Grant gr_seed_01 consumed for act-004 (4 uses left)",
+        "payload": {
+            "grant_id": "gr_seed_01",
+            "action_id": "act-004",
+            "uses_left": 4,
+            "granted_by": "alice",
+        },
+        "ts": "2026-10-11T14:10:05Z",
+    },
+    {
+        "id": "evt-006",
+        "run_id": "run-004",
+        "thread_id": "grant-demo-thread",
+        "action_id": None,
+        "checkpoint_step": 3,
+        "kind": "grant_revoked",
+        "actor": "approver:alice",
+        "description": "Grant gr_seed_01 revoked by alice",
+        "payload": {
+            "grant_id": "gr_seed_01",
+            "revoked_by": "alice",
+        },
+        "ts": "2026-10-11T14:15:00Z",
+    },
 ]
 
 
@@ -97,27 +146,8 @@ async def search_audit_log(
             offset=offset,
         )
         mapped = [e.to_dict() for e in events]
-        if mapped:
-            return {
-                "events": mapped,
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-            }
-
-        # If filtered query returned 0 matches from the journal, fall back to default events
-        if q or thread_id or kind:
-            fallback = _filter_default_events(q=q, thread_id=thread_id, kind=kind)
-            if fallback:
-                return {
-                    "events": fallback[offset : offset + limit],
-                    "total": len(fallback),
-                    "limit": limit,
-                    "offset": offset,
-                }
-
         return {
-            "events": [],
+            "events": mapped,
             "total": total,
             "limit": limit,
             "offset": offset,

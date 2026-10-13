@@ -30,14 +30,15 @@ from backend.api.policies import router as policies_router
 from backend.api.auth import router as auth_router
 from frontend.views import router as frontend_router
 
-from app.chat import router as chat_router
 from app.agents import router as agents_router
-from app.leases import router as leases_router
-from app.traces import router as traces_router
-from app.sandbox import router as sandbox_router
 from app.audit import router as aegis_audit_router
-from app.policies import router as aegis_policies_router
+from app.chat import router as chat_router
+from app.grants import router as grants_router
+from app.leases import router as leases_router
 from app.main import get_approvals, get_blast_radius
+from app.policies import router as aegis_policies_router
+from app.sandbox import router as sandbox_router
+from app.traces import router as traces_router
 
 _FRONTEND_STATIC_DIR = _ROOT_DIR / "frontend" / "static"
 _APP_STATIC_DIR = _ROOT_DIR / "app" / "static"
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(telemetry_router, prefix="/api")
     app.include_router(policies_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(grants_router, prefix="/api")
 
     # Also mount health/ready at root per standard Kubernetes/container probes
     app.include_router(health_router)
@@ -82,6 +84,7 @@ def create_app() -> FastAPI:
 
     # Mount Aegis interactive chat and governance views
     app.include_router(chat_router)
+    app.include_router(grants_router)
     app.include_router(agents_router)
     app.include_router(leases_router)
     app.include_router(traces_router)

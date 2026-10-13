@@ -75,6 +75,86 @@ async def get_run_detail(thread_id: str) -> JSONResponse:
 @router.get("/{thread_id}/graph")
 async def get_run_graph(thread_id: str) -> dict[str, Any]:
     """Decision-graph projection joining journal events and checkpoint steps."""
+    from app.audit import JOURNAL_STORE
+
+    evs: list[Any] = []
+    if hasattr(JOURNAL_STORE, "_events") and JOURNAL_STORE._events:
+        evs = [e for e in JOURNAL_STORE._events if getattr(e, "thread_id", None) == thread_id]
+
+    if evs:
+        nodes: list[dict[str, Any]] = []
+        edges: list[dict[str, Any]] = []
+        for i, ev in enumerate(evs):
+            action_id = getattr(ev, "action_id", None)
+            event_id = getattr(ev, "id", None) or f"evt_{i}"
+            node_id = f"{ev.kind}:{action_id or event_id}"
+            nodes.append(
+                {
+                    "id": node_id,
+                    "kind": ev.kind,
+                    "step": getattr(ev, "checkpoint_step", None) or (i + 1),
+                    "ts": getattr(ev, "ts", None) or getattr(ev, "timestamp", ""),
+                    "actor": getattr(ev, "actor", ""),
+                    "payload": getattr(ev, "payload", {}),
+                }
+            )
+            if i > 0:
+                edges.append({"from": nodes[i - 1]["id"], "to": node_id})
+        return {
+            "thread_id": thread_id,
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+    # Grant-demo thread mock graph
+    if thread_id == "grant-demo-thread":
+        return {
+            "thread_id": thread_id,
+            "nodes": [
+                {
+                    "id": "grant_issued:1",
+                    "kind": "grant_issued",
+                    "step": 1,
+                    "ts": "2026-10-11T14:10:00Z",
+                    "actor": "approver:alice",
+                },
+                {
+                    "id": "action_requested:1",
+                    "kind": "action_requested",
+                    "step": 2,
+                    "ts": "2026-10-11T14:10:04Z",
+                    "actor": "ops_assistant",
+                },
+                {
+                    "id": "grant_consumed:1",
+                    "kind": "grant_consumed",
+                    "step": 2,
+                    "ts": "2026-10-11T14:10:05Z",
+                    "actor": "GuardedExecutor",
+                },
+                {
+                    "id": "action_completed:2",
+                    "kind": "action_completed",
+                    "step": 2,
+                    "ts": "2026-10-11T14:10:06Z",
+                    "actor": "GuardedExecutor",
+                },
+                {
+                    "id": "grant_revoked:1",
+                    "kind": "grant_revoked",
+                    "step": 3,
+                    "ts": "2026-10-11T14:15:00Z",
+                    "actor": "approver:alice",
+                },
+            ],
+            "edges": [
+                {"from": "grant_issued:1", "to": "action_requested:1"},
+                {"from": "action_requested:1", "to": "grant_consumed:1"},
+                {"from": "grant_consumed:1", "to": "action_completed:2"},
+                {"from": "action_completed:2", "to": "grant_revoked:1"},
+            ],
+        }
+
     return {
         "thread_id": thread_id,
         "nodes": [

@@ -1,7 +1,7 @@
 # Grant-06: Audit kinds + timeline rendering
 
 Labels: `wayfinder:task` (AFK) · Map: [User-Granted Temporary Permissions](../2026-10-12-user-grants-map.md)
-Blocked by: Grant-04 (parallel with Grant-05) · Claim: _unclaimed_
+Blocked by: Grant-04 · Claim: `@me`
 
 ## Question
 
@@ -15,8 +15,8 @@ Make grants first-class evidence in the audit trail: searchable kinds and a read
 
 ## Done when
 
-- [ ] Grant events searchable and visible in thread timelines.
-- [ ] pytest + mypy clean.
+- [x] Grant events searchable and visible in thread timelines.
+- [x] pytest + mypy clean.
 
 ## Context pointers
 
@@ -25,4 +25,4 @@ Make grants first-class evidence in the audit trail: searchable kinds and a read
 
 ## Resolution
 
-_unresolved — agent: append what renders where + verification output, then mark boxes._
+Added `grant_issued`, `grant_consumed`, and `grant_revoked` audit entries and kind filtering to `backend/api/audit.py`. Updated `backend/api/runs.py` to project decision graph with grant nodes and causal edges, and updated `frontend/views.py` and `run_detail.html` to render inline timeline events for grant operations. Added integration test suite in `tests/test_audit_timeline.py`. All 311 tests pass (6 skipped); mypy strict clean (0 errors in 69 files).
