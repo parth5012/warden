@@ -84,8 +84,9 @@ class ScopeRule:
             if key in ("path_prefix", "prefix", "path"):
                 continue
 
-            if key == "table" and "table" not in payload and "sql" in payload:
-                is_scoped, tbl = is_scoped_drop_table(str(payload["sql"]))
+            if key == "table" and "table" not in payload and ("sql" in payload or "statement" in payload):
+                sql_text = str(payload.get("sql", payload.get("statement", "")))
+                is_scoped, tbl = is_scoped_drop_table(sql_text)
                 if not is_scoped or tbl != str(expected):
                     return False
                 continue

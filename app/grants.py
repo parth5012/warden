@@ -83,13 +83,14 @@ def derive_scope_from_payload(tool_name: str, payload: dict[str, Any]) -> ScopeR
     """Derive scope rule constraints narrowed from an action's payload."""
     constraints: dict[str, Any] = {}
 
-    # SQL table derivation
+    # SQL table derivation (canonical key: sql; legacy fallback: statement)
     if "table" in payload:
         constraints["table"] = str(payload["table"])
-    elif "sql" in payload:
+    elif "sql" in payload or "statement" in payload:
         from warden.policy.layers_static import is_scoped_drop_table
 
-        is_scoped, table_name = is_scoped_drop_table(str(payload["sql"]))
+        sql_text = str(payload.get("sql", payload.get("statement", "")))
+        is_scoped, table_name = is_scoped_drop_table(sql_text)
         if is_scoped and table_name:
             constraints["table"] = table_name
 

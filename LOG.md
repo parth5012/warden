@@ -2,6 +2,30 @@
 
 # LOG.md — Warden
 
+## 2026-10-13 — Leases/grants repair: canonical agent tools + statement fallback + leases deprecation
+
+**Status:** Done (484 passed, 8 skipped full suite; mypy strict clean on 6 touched files; uncommitted)
+
+Grill locks (5/5): (1) deprecate /leases UI, grants-only — banner + docstring, routes left intact; (2) canonicalize agents to registry names; (3) canonical sql key with statement fallback; (4) keep legacy no-store chat approvals (no app/chat.py change); (5) minimal surgical scope.
+
+Why: "leases and human grants are not working" traced to three app-layer breaks, not the kernel (e2e grants green throughout): (a) DBAgent proposed unregistered `sql_query`/`sql_schema_migration` with `statement` payloads and CodeAgent proposed unregistered `run_shell` — every such action ended `Error(missing handler)` even with a covering grant; (b) `ScopeRule` table-match + `derive_scope_from_payload` + `find_scoped_escalation` read only `payload[sql]`, so legacy `statement` payloads never matched grants and inbox-upgrade derived empty (over-broad) constraints; (c) `/leases` renders a demo-only store never consulted by `GuardedExecutor` (DECISIONS.md #3 dropped leases), presenting fake enforceability.
+
+What changed:
+- `src/warden/agent_engine.py`: DBAgent drop/migration → `exec_db_mutation` + `sql`; readonly → `query_db_readonly` + `query` (plain SELECT on demo table `service_status`); CodeAgent shadow → `exec_shell` + `rm -rf /etc/shadow` (matches L0 `no-destructive-shell`, making the reply's Terminal-Deny claim true — `rm -f` fell through L0 into missing-handler Error).
+- `src/warden/grants.py`, `app/grants.py`, `src/warden/policy/layers_static.py`: `statement` fallback alongside canonical `sql`.
+- `app/leases.py` + `app/templates/leases.html`: deprecation banner pointing to `/grants-view`.
+- `tests/test_grants.py`: 5 regression tests (statement fallback, DBAgent canonical, DBAgent readonly shape, CodeAgent canonical, derive statement).
+
+Verified live: readonly → Allowed end-to-end, CASCADE drop → Denied, shadow rm → Denied (was: Error/Error/Error).
+Code review (2 axes): Standards — no hard violations; Duplicated-Code note (identical sql/statement fallback in kernel + app layer; extract `canonical_sql()` in `layers_static` when a third site appears). Spec — all 5 locks met; no scope creep.
+
+Known gaps left intentionally (minimal scope; chat approvals untouched per lock 4):
+- `exec_shell` has no registered handler (`register_tools` omits it) — scoped-shell allow/escalate-approve still ends `Error(missing handler)` in chat path. Needs sandbox-wired registration (architecture work, not a rename).
+- OpsAssistant readonly stages `{"sql": SELECT...}` but registered `database.query_db_readonly` requires `query` — same key split, same Error at handler. Fix together with exec_shell registration.
+- DBAgent CASCADE demo payload is terminal-deny by design — grants correctly never apply there; use scoped `DROP TABLE staging_imports;` to demo the grant path.
+- `query` vs `sql` key split across handlers/golden (`query`) vs specs/OpsAssistant (`sql`) — unify to one canonical key with a shared `canonical_sql()` helper.
+- `ocr-review` skipped (no UI rendering changed — banner markup only, verified via template read).
+
 ## 2026-10-12 — User-Granted Temporary Permissions ("Grants") Handover (Map #24)
 
 **Status:** Done (458 passed, 6 skipped full suite; 0 mypy errors across 83 files, merged into main via PR #40)
