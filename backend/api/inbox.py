@@ -177,34 +177,34 @@ async def resolve_gate(
 
     is_llm_gate = is_pending_llm_gate(gate_id)
     if is_llm_gate:
-        outcome = await resolve_pending_llm_gate(gate_id, dec, warden_key)
-        if isinstance(outcome, Error):
-            status_code = 403 if outcome.reason == "unauthorized_approver" else 503
+        llm_outcome = await resolve_pending_llm_gate(gate_id, dec, warden_key)
+        if isinstance(llm_outcome, Error):
+            status_code = 403 if llm_outcome.reason == "unauthorized_approver" else 503
             return JSONResponse(
                 status_code=status_code,
-                content={"error": outcome.reason, "gate_id": gate_id},
+                content={"error": llm_outcome.reason, "gate_id": gate_id},
             )
-        if outcome is None:
+        if llm_outcome is None:
             return JSONResponse(
                 status_code=404,
                 content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
             )
-        if isinstance(outcome, Denied) and dec == "approve":
-            if "expired" in outcome.reason.lower():
+        if isinstance(llm_outcome, Denied) and dec == "approve":
+            if "expired" in llm_outcome.reason.lower():
                 PENDING_GATES.pop(gate_id, None)
                 return JSONResponse(
                     status_code=410,
                     content={
                         "error": "approval_expired",
-                        "detail": outcome.reason,
+                        "detail": llm_outcome.reason,
                         "gate_id": gate_id,
                     },
                 )
             return JSONResponse(
-                status_code=403 if "Approval rejected" in outcome.reason else 409,
+                status_code=403 if "Approval rejected" in llm_outcome.reason else 409,
                 content={
                     "error": "approval_rejected",
-                    "detail": outcome.reason,
+                    "detail": llm_outcome.reason,
                     "gate_id": gate_id,
                 },
             )
