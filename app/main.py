@@ -406,7 +406,12 @@ async def get_dashboard(request: Request):
     usage = await get_llm_usage(limit=10)
     runs = (await list_runs()).get("runs", [])
     events = await get_audit_journal().query()
-    pending_gates = list(PENDING_GATES.values())
+    try:
+        from app.projections import all_pending_gates
+
+        pending_gates = all_pending_gates()
+    except Exception:
+        pending_gates = list(PENDING_GATES.values())
     activity_data = [
         {
             "time": (datetime.now(timezone.utc) - timedelta(hours=offset)).strftime("%H:%M"),

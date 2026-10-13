@@ -150,9 +150,11 @@ def test_api_inbox_list_and_resolve() -> None:
     res_404 = client.post("/api/inbox/nonexistent-gate/resolve", json={"decision": "deny"})
     assert res_404.status_code == 404
 
-    # Resolve an existing gate if present
-    if gates:
-        gate_id = gates[0]["id"]
+    # Resolve an existing gate if present (only inbox-API-resolvable ones;
+    # journal-projected chat escalations resolve in their chat thread).
+    resolvable = [g for g in gates if g.get("resolvable_via_inbox_api", True)]
+    if resolvable:
+        gate_id = resolvable[0]["id"]
 
         # Test invalid decision -> 400
         res_invalid = client.post(

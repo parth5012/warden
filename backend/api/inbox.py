@@ -37,8 +37,18 @@ PENDING_GATES: dict[str, dict[str, Any]] = {
 
 @router.get("")
 async def list_pending_gates() -> dict[str, Any]:
-    """List all pending gate requests."""
-    return {"pending_gates": list(PENDING_GATES.values())}
+    """List all pending gate requests.
+
+    Union of the journal projection (`gate_requested` minus resolutions —
+    covers chat-tool escalations) and the legacy in-memory dict (LangGraph
+    runs, LLM gates, demo seed).
+    """
+    try:
+        from app.projections import all_pending_gates
+
+        return {"pending_gates": all_pending_gates()}
+    except Exception:
+        return {"pending_gates": list(PENDING_GATES.values())}
 
 
 @router.post("/{gate_id}/resolve")
@@ -53,9 +63,95 @@ async def resolve_gate(
     Supports both JSON clients and HTMX form submissions.
     """
     if gate_id not in PENDING_GATES:
+        # Journal-projected tool gate (e.g. chat escalation): resolve it for
+        # real through the shared resolver instead of bouncing to chat.
+        try:
+            from app.tool_gates import resolve_tool_gate
+        except Exception:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
+            )
+
+        # Determine decision first (Form or JSON body)
+        _dec = decision
+        _body_dec: str | None = None
+        if not _dec:
+            try:
+                _body = await request.json()
+                if isinstance(_body, dict) and "decision" in _body:
+                    _body_dec = str(_body["decision"]).strip().lower()
+            except Exception:
+                pass
+        _dec = _dec or _body_dec
+        if _dec not in ("approve", "deny"):
+            # Unknown gate and no usable decision: check whether it is a
+            # journal-projected tool gate to give a precise status.
+            from app.projections import live_pending_gates
+
+            journal_hit = next(
+                (g for g in live_pending_gates() if str(g.get("id")) == gate_id),
+                None,
+            )
+            if journal_hit is not None:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "invalid_decision",
+                        "detail": "Decision must be either 'approve' or 'deny'",
+                    },
+                )
+            return JSONResponse(
+                status_code=404,
+                content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
+            )
+        try:
+            _approver = warden_key or "operator"
+            result = await resolve_tool_gate(gate_id, _dec, _approver)
+        except Exception:
+            result = {"ok": False, "error": "resolve_failed"}
+        if not result.get("ok"):
+            if result.get("error") == "not_found":
+                return JSONResponse(
+                    status_code=404,
+                    content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
+                )
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "error": str(result.get("error") or "resolve_failed"),
+                    "detail": str(result.get("message") or "Tool gate resolution failed."),
+                    "gate_id": gate_id,
+                },
+            )
+        # Also drop any matching legacy entry (union dedupe safety).
+        PENDING_GATES.pop(gate_id, None)
+        if "text/html" in request.headers.get("accept", "") or "HX-Request" in request.headers:
+            outcome = str(result.get("outcome"))
+            status_color = "var(--green)" if outcome == "approved" else "var(--red)"
+            badge_class = "badge-allowed" if outcome == "approved" else "badge-denied"
+            return HTMLResponse(
+                content=f"""
+        <div class="card" style="border-left: 4px solid {status_color}; opacity: 0.85;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span class="badge {badge_class}">RESOLVED: {html.escape(outcome.upper())}</span>
+                    <strong style="margin-left: 0.5rem;">{html.escape(str(result.get("action_name") or "tool"))}</strong>
+                </div>
+                <span style="font-size: 0.8rem; color: var(--text-dim);">Gate {html.escape(gate_id)} resolved</span>
+            </div>
+        </div>
+        """
+            )
         return JSONResponse(
-            status_code=404,
-            content={"error": "not_found", "detail": f"Gate {gate_id} not found"},
+            content={
+                "gate_id": gate_id,
+                "status": "resolved",
+                "decision": _dec,
+                "outcome": result.get("outcome"),
+                "action_id": result.get("action_id"),
+                "approver": result.get("decided_by"),
+            }
         )
 
     # Determine decision from Form or JSON body

@@ -10,6 +10,69 @@
     </div>
 </section>
 
+{% if tool_gates is defined and tool_gates %}
+<section class="page-header" style="margin-top: 1.5rem;">
+    <div>
+        <h1 class="page-title">Pending tool approvals</h1>
+        <p class="page-subtitle">Escalated tool actions from chat and runs, projected from the audit journal. Approve or deny them where they parked — in the chat thread.</p>
+    </div>
+</section>
+
+    {% for gate in tool_gates %}
+    {% if gate.source == 'journal' %}
+    <section class="card-panel llm-card" style="margin-bottom: 1rem; border-left: 4px solid var(--color-amber, #F59E0B);">
+        <h2>{{ gate.action_name }}</h2>
+        <p>{{ gate.ask }}</p>
+        <dl class="llm-summary-grid">
+            <div><dt>Gate</dt><dd class="code-font">{{ gate.id }}</dd></div>
+            <div><dt>Thread</dt><dd class="code-font">{{ gate.thread_id }}</dd></div>
+            <div><dt>Action</dt><dd class="code-font">{{ gate.action_id }}</dd></div>
+            <div><dt>Actor</dt><dd>{{ gate.actor }}</dd></div>
+            <div><dt>Policy</dt><dd class="code-font">{{ gate.policy }}</dd></div>
+            <div><dt>Created</dt><dd>{{ gate.created_at }}</dd></div>
+        </dl>
+        {% if gate.reason %}
+        <p><strong>Policy rationale:</strong> {{ gate.reason }}</p>
+        {% endif %}
+        <details>
+            <summary style="cursor: pointer; font-weight: 600;">Task details (tool arguments)</summary>
+            <pre class="code-font" style="white-space: pre-wrap; font-size: 0.75rem;">{{ gate.payload | tojson(indent=2) }}</pre>
+        </details>
+        <form hx-post="/inbox/tool/{{ gate.id }}/resolve" hx-target="#tool-gate-result-{{ loop.index }}"
+              hx-swap="innerHTML">
+            <label for="tool-approver-{{ loop.index }}">Approver</label>
+            <input id="tool-approver-{{ loop.index }}" name="approver" type="text"
+                   autocomplete="off" value="operator" required>
+            <div class="llm-actions">
+                <button class="btn-action" type="submit" name="decision" value="approve">Approve and execute</button>
+                <button class="btn-action" type="submit" name="decision" value="deny">Deny without execution</button>
+            </div>
+        </form>
+        <div id="tool-gate-result-{{ loop.index }}" aria-live="polite"></div>
+        <p><a href="{{ gate.chat_url|default('/chat') }}">Open in chat thread →</a></p>
+    </section>
+    {% else %}
+    <section class="card-panel llm-card" style="margin-bottom: 1rem; border-left: 4px solid var(--color-amber, #F59E0B);">
+        <h2>{{ gate.action_name }}</h2>
+        <p>{{ gate.ask }}</p>
+        <dl class="llm-summary-grid">
+            <div><dt>Gate</dt><dd class="code-font">{{ gate.id }}</dd></div>
+            <div><dt>Thread</dt><dd class="code-font">{{ gate.thread_id }}</dd></div>
+            <div><dt>Created</dt><dd>{{ gate.created_at }}</dd></div>
+        </dl>
+        <form hx-post="/api/inbox/{{ gate.id }}/resolve" hx-target="#tool-gate-result-{{ loop.index }}"
+              hx-swap="innerHTML">
+            <div class="llm-actions">
+                <button class="btn-action" type="submit" name="decision" value="approve">Approve</button>
+                <button class="btn-action" type="submit" name="decision" value="deny">Deny</button>
+            </div>
+        </form>
+        <div id="tool-gate-result-{{ loop.index }}" aria-live="polite"></div>
+    </section>
+    {% endif %}
+    {% endfor %}
+{% endif %}
+
 {% if gates %}
     {% for gate in gates %}
     <section class="card-panel llm-card" style="margin-bottom: 1rem;">
@@ -37,8 +100,10 @@
     </section>
     {% endfor %}
 {% else %}
+    {% if not (tool_gates is defined and tool_gates) %}
     <section class="card-panel">
-        <p class="empty-state">No guarded LLM requests are waiting for approval.</p>
+        <p class="empty-state">No guarded requests are waiting for approval.</p>
     </section>
+    {% endif %}
 {% endif %}
 {% endblock %}
