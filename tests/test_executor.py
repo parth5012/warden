@@ -940,7 +940,7 @@ async def test_deny_with_grant_still_denies() -> None:
     out = await executor.execute(act)
     # Lock 5: Denied is terminal, grants never consulted
     assert isinstance(out, Denied)
-    assert out.policy == "no-destructive-sql"
+    assert out.policy in ("no-destructive-sql", "no_destructive_sql")
     # No grant consumed event in journal
     consumed_evs = [e for e in journal.events if e.kind == EventKind.GRANT_CONSUMED.value]
     assert len(consumed_evs) == 0

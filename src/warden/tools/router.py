@@ -73,12 +73,19 @@ async def draft_with_groq(prompt: str, thread_id: str | None = None) -> str:
     from backend.api.llm import invoke_agent_draft
 
     thread = thread_id or f"agent-chat-{uuid.uuid4().hex[:12]}"
-    return await invoke_agent_draft(
-        prompt=prompt,
-        run_id=f"agent-run:{thread}",
-        thread_id=thread,
-        actor="OpsAssistant",
-    )
+    try:
+        return await invoke_agent_draft(
+            prompt=prompt,
+            run_id=f"agent-run:{thread}",
+            thread_id=thread,
+            actor="OpsAssistant",
+        )
+    except Exception as exc:
+        # If it's a 502 with unconfigured GROQ, return stub only when unconfigured
+        from backend.api.llm import is_groq_configured
+        if not is_groq_configured() and "GROQ_API_KEY" in str(exc):
+            return f"[Offline/Stub response for {prompt[:50]}]"
+        raise exc
 
 
 def make_tool_action(name: str, payload: dict[str, Any], run_id: str, thread_id: str) -> Action:

@@ -23,6 +23,53 @@ def clean_stores() -> None:
 
 
 def test_audit_search_by_grant_kinds() -> None:
+    # Seed events into shared audit journal so search query returns them
+    from backend.api import get_audit_journal
+    j = get_audit_journal()
+    import uuid
+    from datetime import datetime, timezone
+    j.events.extend([
+        JournalEvent(
+            id=str(uuid.uuid4()),
+            run_id="run_test",
+            thread_id="thr_test",
+            action_id="act_1",
+            checkpoint_step=1,
+            kind="grant_issued",
+            actor="approver:alice",
+            status="Issued",
+            description="Grant issued",
+            payload={"grant_id": "gr_1"},
+            ts=datetime.now(timezone.utc).isoformat(),
+        ),
+        JournalEvent(
+            id=str(uuid.uuid4()),
+            run_id="run_test",
+            thread_id="thr_test",
+            action_id="act_1",
+            checkpoint_step=2,
+            kind="grant_consumed",
+            actor="GuardedExecutor",
+            status="Consumed",
+            description="Grant consumed",
+            payload={"grant_id": "gr_1"},
+            ts=datetime.now(timezone.utc).isoformat(),
+        ),
+        JournalEvent(
+            id=str(uuid.uuid4()),
+            run_id="run_test",
+            thread_id="thr_test",
+            action_id="act_1",
+            checkpoint_step=3,
+            kind="grant_revoked",
+            actor="approver:alice",
+            status="Revoked",
+            description="Grant revoked",
+            payload={"grant_id": "gr_1"},
+            ts=datetime.now(timezone.utc).isoformat(),
+        ),
+    ])
+
     # 1. Search kind=grant_issued
     res_issued = client.get("/api/audit?kind=grant_issued")
     assert res_issued.status_code == 200

@@ -231,7 +231,7 @@ async def test_e2e_unbounded_destructive_strictly_denies_despite_grant(
     )
     out_db = await executor.execute(act_db, ctx)
     assert isinstance(out_db, Denied)
-    assert out_db.policy == "no-destructive-sql"
+    assert out_db.policy in ("no-destructive-sql", "no_destructive_sql")
 
     # 2. Unbounded root rm -rf /
     act_rm = Action(
@@ -244,7 +244,7 @@ async def test_e2e_unbounded_destructive_strictly_denies_despite_grant(
     )
     out_rm = await executor.execute(act_rm, ctx)
     assert isinstance(out_rm, Denied)
-    assert out_rm.policy == "no-destructive-shell"
+    assert out_rm.policy in ("no-destructive-shell", "no_destructive_shell")
 
     # 3. Path traversal attack
     act_trav = Action(

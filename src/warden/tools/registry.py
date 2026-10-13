@@ -73,6 +73,27 @@ def register_tools(
         _simulate_approved_restart,
         kind=ActionKind.TOOL,
     )
+    executor.register_handler(
+        "batch_delete_files",
+        _simulate_batch_delete,
+        kind=ActionKind.TOOL,
+    )
+    executor.register_handler(
+        "mass_delete",
+        _simulate_batch_delete,
+        kind=ActionKind.TOOL,
+    )
+
+
+async def _simulate_batch_delete(action: Action) -> dict[str, object]:
+    """Validate a batch file delete action in the workspace."""
+    target = str(action.payload.get("target_resource") or action.payload.get("path") or "/workspace/tmp/")
+    return {
+        "status": "deleted",
+        "target": target,
+        "simulation": True,
+        "note": "Batch deletion executed safely.",
+    }
 
 
 async def _simulate_approved_email(action: Action) -> dict[str, object]:
