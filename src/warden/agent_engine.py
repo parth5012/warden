@@ -123,8 +123,8 @@ class CodeAgent(BaseAgent):
             action = Action(
                 id=f"act_{uuid.uuid4().hex[:8]}",
                 kind=ActionKind.TOOL,
-                name="run_shell",
-                payload={"command": "rm -f /etc/shadow", "target_resource": "/etc/shadow"},
+                name="exec_shell",
+                payload={"command": "rm -rf /etc/shadow", "target_resource": "/etc/shadow"},
                 run_id=f"run_{uuid.uuid4().hex[:6]}",
                 thread_id=thread_id,
             )
@@ -211,8 +211,8 @@ class DBAgent(BaseAgent):
             action = Action(
                 id=f"act_{uuid.uuid4().hex[:8]}",
                 kind=ActionKind.TOOL,
-                name="sql_query",
-                payload={"statement": "DROP TABLE customer_accounts CASCADE;", "database": "production_db"},
+                name="exec_db_mutation",
+                payload={"sql": "DROP TABLE customer_accounts CASCADE;", "database": "production_db"},
                 run_id=f"run_{uuid.uuid4().hex[:6]}",
                 thread_id=thread_id,
             )
@@ -228,11 +228,11 @@ class DBAgent(BaseAgent):
             action = Action(
                 id=f"act_{uuid.uuid4().hex[:8]}",
                 kind=ActionKind.TOOL,
-                name="sql_schema_migration",
+                name="exec_db_mutation",
                 payload={
                     "operation": "SQL_SCHEMA_MIGRATION",
                     "target_resource": "db.prod.users",
-                    "statement": "ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45);",
+                    "sql": "ALTER TABLE users ADD COLUMN last_login_ip VARCHAR(45);",
                 },
                 run_id=f"run_{uuid.uuid4().hex[:6]}",
                 thread_id=thread_id,
@@ -249,8 +249,8 @@ class DBAgent(BaseAgent):
             action = Action(
                 id=f"act_{uuid.uuid4().hex[:8]}",
                 kind=ActionKind.TOOL,
-                name="sql_query",
-                payload={"statement": "EXPLAIN ANALYZE SELECT * FROM pg_stat_user_tables LIMIT 10;"},
+                name="query_db_readonly",
+                payload={"query": "SELECT * FROM service_status LIMIT 10;"},
                 run_id=f"run_{uuid.uuid4().hex[:6]}",
                 thread_id=thread_id,
             )

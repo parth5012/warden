@@ -1,10 +1,10 @@
 """Ephemeral Leases Management Router for Aegis.
 
-Implements:
-- Time-bound capability tokens (TTL countdown, scope bounding, max invocation limits).
-- Immediate operator revocation (kill-switch).
-- Issue new ephemeral leases with cryptographic signature.
-- HTMX live filtering, status polling, and partial updates.
+DEPRECATED (grill lock 2026-10-13): supervisor-minted custody leases were
+dropped per DECISIONS.md #3 in favor of human-issued user grants
+(`src/warden/grants.py`, `/grants`). This router renders a demo-only
+in-memory list (LEASES_STORE) that is never consulted by GuardedExecutor.
+Kept for visual reference; new capability flows must use /grants.
 """
 
 from __future__ import annotations

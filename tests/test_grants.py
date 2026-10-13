@@ -244,3 +244,56 @@ def test_grant_thread_isolation() -> None:
     # Not found for thread_B
     assert store.find_covering_grant("thread_B", "send_email", {}) is None
     assert store.list_for_thread("thread_B") == []
+
+
+def test_scope_rule_table_matches_legacy_statement_key() -> None:
+    """Regression: DBAgent historically sent {'statement': ...}; grants must still match."""
+    rule = ScopeRule(tool="exec_db_mutation", constraints={"table": "staging_imports"})
+    assert rule.matches("exec_db_mutation", {"statement": "DROP TABLE staging_imports;"})
+    assert not rule.matches("exec_db_mutation", {"statement": "DROP TABLE users;"})
+
+
+def test_dbagent_proposes_canonical_mutation_tool() -> None:
+    """Regression: DBAgent must propose registry-canonical exec_db_mutation/sql, not sql_query/statement."""
+    import asyncio
+
+    from warden.agent_engine import DBAgent
+
+    result = asyncio.run(DBAgent().process_message("drop table users", "thr_reg", []))
+    assert result.action is not None
+    assert result.action.name == "exec_db_mutation"
+    assert "sql" in result.action.payload
+
+
+def test_dbagent_readonly_proposes_registered_handler_key() -> None:
+    """Regression: DBAgent readonly must use the registered query_db_readonly/query shape."""
+    import asyncio
+
+    from warden.agent_engine import DBAgent
+
+    result = asyncio.run(DBAgent().process_message("check index health", "thr_reg", []))
+    assert result.action is not None
+    assert result.action.name == "query_db_readonly"
+    assert "query" in result.action.payload
+
+
+def test_codeagent_proposes_canonical_shell_tool() -> None:
+    """Regression: CodeAgent must propose registry-canonical exec_shell, not run_shell."""
+    import asyncio
+
+    from warden.agent_engine import CodeAgent
+
+    result = asyncio.run(CodeAgent().process_message("delete /etc/shadow", "thr_reg", []))
+    assert result.action is not None
+    assert result.action.name == "exec_shell"
+
+
+def test_derive_scope_handles_legacy_statement_key() -> None:
+    """Regression: inbox-upgrade grant derivation must narrow statement payloads to table constraints."""
+    from app.grants import derive_scope_from_payload
+
+    rule = derive_scope_from_payload(
+        "exec_db_mutation", {"statement": "DROP TABLE staging_imports;"}
+    )
+    assert rule.tool == "exec_db_mutation"
+    assert rule.constraints.get("table") == "staging_imports"

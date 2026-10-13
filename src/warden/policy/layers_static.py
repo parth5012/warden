@@ -115,8 +115,8 @@ def is_scoped_fs_delete(action_name: str, payload: dict[str, Any]) -> tuple[bool
 
 def find_scoped_escalation(action_name: str, payload: dict[str, Any]) -> str | None:
     """Return rule_id if action/payload matches a bounded scoped destructive pattern, else None."""
-    # Check SQL in payload
-    sql = str(payload.get("sql", ""))
+    # Check SQL in payload (canonical key: sql; legacy fallback: statement)
+    sql = str(payload.get("sql", payload.get("statement", "")))
     if sql:
         is_scoped, _ = is_scoped_drop_table(sql)
         if is_scoped:
