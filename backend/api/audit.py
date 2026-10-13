@@ -38,10 +38,6 @@ from backend.api import get_audit_journal
 
 logger = logging.getLogger("warden.api.audit")
 
-# List of audit event dictionaries exposed to frontend views for rendering.
-AUDIT_EVENTS: list[dict[str, Any]] = []
-
-
 router = APIRouter(prefix="/audit", tags=["Audit Journal"])
 
 AUDIT_EVENTS: list[dict[str, Any]] = [
