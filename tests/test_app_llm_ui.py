@@ -198,7 +198,7 @@ def test_guarded_llm_ui_escalation_waits_for_authenticated_approval(
     assert inbox.status_code == 200
     match = re.search(r'name="decision" value="approve"', inbox.text)
     assert match
-    gate_id_match = re.search(r"/inbox/(?!tool/)([^/]+)/resolve", inbox.text)
+    gate_id_match = re.search(r'hx-post="/inbox/(?!tool/)([^/]+)/resolve"', inbox.text)
     assert gate_id_match
     gate_id = gate_id_match.group(1)
 
