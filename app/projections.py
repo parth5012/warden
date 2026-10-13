@@ -34,6 +34,137 @@ def _requested_by_action(action_id: str) -> Any | None:
     return None
 
 
+_RESOLVED_GATE_KINDS = (
+    "gate_decided",
+    "action_completed",
+    "action_denied",
+    "action_failed",
+)
+
+
+def live_pending_gates(limit: int = 100) -> List[Dict[str, Any]]:
+    """Pending HITL gates projected from the journal (lock 3).
+
+    A `gate_requested` event is pending until the same action is resolved by
+    `gate_decided` or a terminal outcome (`action_completed`/`action_denied`/
+    `action_failed`). Covers chat-tool escalations, which never touch the
+    legacy in-memory `PENDING_GATES` dict, as well as any other
+    GuardedExecutor caller — no per-caller bookkeeping.
+    """
+    gates, _ = JOURNAL_STORE.list_events(kind="gate_requested", limit=limit)
+    if not gates:
+        return []
+
+    resolved_action_ids: set[str] = set()
+    resolved_gate_ids: set[str] = set()
+    for kind in _RESOLVED_GATE_KINDS:
+        events, _ = JOURNAL_STORE.list_events(kind=kind, limit=500)
+        for event in events:
+            if event.action_id:
+                resolved_action_ids.add(event.action_id)
+            payload = _payload(event)
+            gid = str(payload.get("gate_id") or "")
+            if gid:
+                resolved_gate_ids.add(gid)
+
+    pending: List[Dict[str, Any]] = []
+    for event in gates:
+        action_id = event.action_id or ""
+        payload = _payload(event)
+        gate_id = str(payload.get("gate_id") or action_id)
+        if not gate_id:
+            continue
+        if gate_id in resolved_gate_ids:
+            continue
+        if action_id and action_id in resolved_action_ids:
+            continue
+
+        context = payload.get("context")
+        context = context if isinstance(context, dict) else {}
+        reason = str(context.get("reason") or event.description or "")
+        policy = str(context.get("policy") or context.get("rule_id") or "")
+
+        action_name = ""
+        actor = event.actor
+        thread_id = event.thread_id
+        action_payload: Dict[str, Any] = {}
+        requested = _requested_by_action(action_id)
+        if requested is not None:
+            request_payload = _payload(requested)
+            action_name = str(request_payload.get("name") or "")
+            actor = requested.actor or actor
+            thread_id = requested.thread_id or thread_id
+            inner = request_payload.get("payload")
+            if isinstance(inner, dict):
+                action_payload = dict(inner)
+            else:
+                action_payload = {
+                    k: v
+                    for k, v in request_payload.items()
+                    if k not in ("action_id", "kind", "name")
+                }
+
+        ask = f"Approve {action_name or 'tool action'}?"
+        if reason:
+            ask = f"{ask} — {reason[:160]}"
+        pending.append(
+            {
+                "id": gate_id,
+                "gate_id": gate_id,
+                "action_id": action_id,
+                "thread_id": thread_id or "",
+                "action_name": action_name or "tool",
+                "ask": ask,
+                "payload": {
+                    **action_payload,
+                    "policy": policy,
+                    "reason": reason,
+                    "gate_id": gate_id,
+                    "action_id": action_id,
+                },
+                "created_at": event.ts,
+                "policy": policy,
+                "reason": reason,
+                "actor": actor,
+                "source": "journal",
+                "chat_url": f"/chat?thread_id={thread_id}" if thread_id else "/chat",
+            }
+        )
+
+    pending.sort(key=lambda row: str(row["created_at"]), reverse=True)
+    return pending[:limit]
+
+
+def all_pending_gates(limit: int = 100) -> List[Dict[str, Any]]:
+    """Union of the journal projection and the legacy `PENDING_GATES` dict.
+
+    Legacy entries (LangGraph runs, LLM gates, demo seed) have no journal
+    `gate_requested` row, so both sources are needed until the inbox is fully
+    journal-backed (render.yaml follow-through). Dedupes on gate id.
+    """
+    live = live_pending_gates(limit=limit)
+    try:
+        from backend.api.inbox import PENDING_GATES
+
+        legacy = list(PENDING_GATES.values())
+        legacy_ids = {str(g.get("id")) for g in legacy}
+    except Exception:
+        legacy = []
+        legacy_ids = set()
+    for row in live:
+        # Journal-only gates (e.g. chat escalations) resolve where they parked
+        # (the chat thread), not via POST /api/inbox/{id}/resolve.
+        row["resolvable_via_inbox_api"] = str(row.get("id")) in legacy_ids
+    seen = {str(row.get("id")) for row in live}
+    merged = list(live)
+    for entry in legacy:
+        if str(entry.get("id")) not in seen:
+            row = dict(entry)
+            row.setdefault("source", "legacy")
+            merged.append(row)
+    return merged[:limit]
+
+
 def recent_policy_evaluations(limit: int = 10) -> List[Dict[str, Any]]:
     """Newest-first seam checks: evaluations, terminal denies, and HITL gates."""
     gathered: List[Any] = []

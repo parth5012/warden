@@ -1,7 +1,5 @@
 # LOG.md — Warden
 
-# LOG.md — Warden
-
 ## 2026-10-13 — Leases/grants repair: canonical agent tools + statement fallback + leases deprecation
 
 **Status:** Done (484 passed, 8 skipped full suite; mypy strict clean on 6 touched files; uncommitted)
@@ -25,6 +23,35 @@ Known gaps left intentionally (minimal scope; chat approvals untouched per lock 
 - DBAgent CASCADE demo payload is terminal-deny by design — grants correctly never apply there; use scoped `DROP TABLE staging_imports;` to demo the grant path.
 - `query` vs `sql` key split across handlers/golden (`query`) vs specs/OpsAssistant (`sql`) — unify to one canonical key with a shared `canonical_sql()` helper.
 - `ocr-review` skipped (no UI rendering changed — banner markup only, verified via template read).
+## 2026-10-13 — Chat escalations surface in Interception Gate (lock 3 follow-through)
+
+**Status:** Done (480 passed, 8 skipped full suite; mypy clean on changed files)
+
+Why: chat-tool `escalate` outcomes journaled `gate_requested` but never entered
+the legacy in-memory `PENDING_GATES` dict, so `/inbox`, `/api/inbox`, and the
+dashboard "Pending Operator Approvals" panel were blind to them — violating the
+locked rule that the approvals inbox is a journal projection.
+
+What changed:
+- `app/projections.py`: new `live_pending_gates()` (`gate_requested` minus
+  `gate_decided`/terminal outcomes, joined with `action_requested` for
+  action/thread/actor) + `all_pending_gates()` union with legacy dict.
+- `backend/api/inbox.py`: `GET /api/inbox` returns the union; `POST resolve`
+  on a journal-only gate returns 409 `resolve_in_chat` with `chat_url`.
+- `app/main.py`: dashboard pending panel + `escalated` count read the union.
+- `app/llm.py` + `app/templates/llm_inbox.html`: `/inbox` (Interception Gate)
+  gains a "Pending tool approvals" section linking back to the parking chat
+  thread; LLM gates keep their approve/deny forms.
+- `app/templates/dashboard.html`: pending rows link to chat when `chat_url` set.
+- `tests/test_chat_inbox_projection.py`: 3 regression tests (appears, leaves on
+  resolve, resolve-via-API points to chat).
+- `tests/test_web.py`: inbox resolve test now picks an inbox-resolvable gate.
+- Left `/approvals` mock triage queue untouched (demo dataset per PRODUCT.md).
+
+Verification:
+- New tests: 3 passed.
+- Full suite: 480 passed, 8 skipped (`pytest tests -q --ignore=tests/evals`).
+- Mypy: clean on `app/projections.py`, `backend/api/inbox.py`.
 
 ## 2026-10-12 — User-Granted Temporary Permissions ("Grants") Handover (Map #24)
 

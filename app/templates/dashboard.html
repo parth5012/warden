@@ -139,7 +139,7 @@
                         <td>{{ gate.action_name }}</td>
                         <td class="code-font">{{ gate.thread_id }}</td>
                         <td>{{ gate.created_at }}</td>
-                        <td><a href="/inbox">Review gate</a></td>
+                        <td>{% if gate.chat_url %}<a href="{{ gate.chat_url }}">Open in chat</a>{% else %}<a href="/inbox">Review gate</a>{% endif %}</td>
                     </tr>
                 {% endfor %}
                 </tbody>

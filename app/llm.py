@@ -220,15 +220,85 @@ async def guarded_llm_usage_stream() -> HTMLResponse:
 
 @router.get("/inbox", response_class=HTMLResponse)
 async def guarded_llm_inbox(request: Request) -> HTMLResponse:
-    gates = [
+    llm_gates = [
         gate
         for gate_id, gate in PENDING_GATES.items()
         if is_pending_llm_gate(gate_id)
     ]
+    try:
+        from app.projections import live_pending_gates
+
+        tool_gates = live_pending_gates()
+    except Exception:
+        tool_gates = []
+    legacy_tool_gates = [
+        gate
+        for gate_id, gate in PENDING_GATES.items()
+        if not is_pending_llm_gate(gate_id)
+    ]
+    seen = {str(g.get("id")) for g in tool_gates}
+    for gate in legacy_tool_gates:
+        if str(gate.get("id")) not in seen:
+            row = dict(gate)
+            row.setdefault("source", "legacy")
+            tool_gates.append(row)
+    pending_count = len(llm_gates) + len(tool_gates)
     return _templates.TemplateResponse(
         request=request,
         name="llm_inbox.html",
-        context={"active_page": "approvals", "pending_count": len(gates), "gates": gates},
+        context={
+            "active_page": "approvals",
+            "pending_count": pending_count,
+            "gates": llm_gates,
+            "tool_gates": tool_gates,
+        },
+    )
+
+
+@router.post("/inbox/tool/{gate_id}/resolve", response_class=HTMLResponse)
+async def resolve_tool_gate_from_inbox(
+    gate_id: str,
+    decision: str = Form(...),
+    approver: str = Form(default="operator"),
+) -> HTMLResponse:
+    """Approve/deny a journal-projected tool gate from the Interception Gate."""
+    if decision not in {"approve", "deny"}:
+        raise HTTPException(status_code=400, detail="Decision must be approve or deny.")
+    from app.tool_gates import resolve_tool_gate
+
+    result = await resolve_tool_gate(gate_id, decision, approver)
+    if not result.get("ok"):
+        error = str(result.get("error") or "resolve_failed")
+        if error == "not_found":
+            raise HTTPException(status_code=404, detail="Pending tool gate was not found.")
+        if error == "action_not_found":
+            raise HTTPException(
+                status_code=410,
+                detail="Original action is no longer available in the journal.",
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=str(result.get("message") or "Tool gate resolution failed."),
+        )
+    outcome = str(result.get("outcome"))
+    if outcome == "approved":
+        badge, color = "RESOLVED: APPROVED", "var(--green)"
+    elif outcome == "denied":
+        badge, color = "RESOLVED: DENIED", "var(--red)"
+    else:
+        badge, color = "RESOLVED: DENIED BY POLICY", "var(--red)"
+    return HTMLResponse(
+        content=(
+            '<div class="card" style="border-left: 4px solid '
+            f'{color}; opacity: 0.85;">'
+            '<div style="display: flex; justify-content: space-between; align-items: center;">'
+            f'<div><span class="badge">{html.escape(badge)}</span>'
+            f'<strong style="margin-left: 0.5rem;">{html.escape(str(result.get("action_name") or "tool"))}</strong>'
+            f'<p style="margin: 0.25rem 0 0;">{html.escape(str(result.get("message") or ""))}</p></div>'
+            f'<span style="font-size: 0.8rem; color: var(--text-dim);">Gate {html.escape(gate_id)} resolved</span>'
+            "</div></div>"
+        ),
+        headers={"HX-Trigger": "dashboard-updated"},
     )
 
 
