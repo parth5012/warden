@@ -1,5 +1,22 @@
 # LOG.md — Warden
 
+## 2026-10-14 — USP deep-research documented (`docs/USP.md`)
+
+**Status:** Done (docs only, no source changes)
+
+What changed:
+- `docs/USP.md` (new): 7 ranked differentiators with lock/evidence pointers,
+  competitor map (LangSmith Gateway, Langfuse, NeMo, Guardrails AI/Lakera,
+  HumanLayer, Portkey, orchestration frameworks, governance SaaS), 3 sales
+  pitches (judge 90s / enterprise / developer), honest-state section
+  (STATUS.md stale since 2026-10-11; latency numbers are targets, not measured),
+  proof-artifact plan, USP ladder for README/deck.
+- `docs/README.md` + root `README.md`: indexed `docs/USP.md`.
+- Deliberately did NOT touch `STATUS.md` staleness or `Aegis` leftovers —
+  flagged in `docs/USP.md` §4 as follow-ups.
+
+Verification: `git status` shows docs-only diff; markdown tables hand-checked.
+
 ## 2026-10-12 — GuardedExecutor core seam & full multi-agent UI integration
 
 **Status:** Done (234 passed full suite, 0 mypy errors across 71 files)

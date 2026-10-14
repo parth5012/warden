@@ -216,6 +216,7 @@ uv run python tests/cli_chat.py --verbose
 | Document | Purpose |
 |---|---|
 | [`docs/README.md`](docs/README.md) | Documentation index and reading order |
+| [`docs/USP.md`](docs/USP.md) | Differentiators, competitor map, sales pitches, proof plan |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Component diagrams and flow |
 | [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) | HTTP interface specifications |
 | [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) | Domain types and persistence schemas |
